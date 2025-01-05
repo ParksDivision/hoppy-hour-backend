@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model api_data_google {
+  id              String    @id @unique @default(uuid())
+  request_type    String?
+  request_sent_on DateTime
+  data            String
+  status          String?
+  created_on      DateTime  @default(now())
+  updated_on      DateTime?
+  created_by      Int?
+  updated_by      Int?
+}
+
+model api_data_yelp {
+  id              String    @id @unique @default(uuid())
+  request_type    String?
+  request_sent_on DateTime
+  data            String
+  status          String?
+  created_on      DateTime  @default(now())
+  updated_on      DateTime?
+  created_by      Int?
+  updated_by      Int?
+}
+
+model businesses {
+  id               String          @id @unique @default(uuid())
+  user_id          String?         @unique
+  business_name    String
+  photos           String
+  full_address     String
+  hours            String
+  deal_hours       String
+  deal_description String?
+  business_url     String?
+  ratings_yelp     Float?
+  ratings_google   Float?
+  user_votes       user_votes[]
+  user_comments    user_comments[]
+  created_on       DateTime        @default(now())
+  created_by       Int?
+  updated_by       Int?
+  users            users?          @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model user_comments {
+  id          String     @id @unique @default(uuid())
+  business_id String
+  user_id     String
+  comment     String     @db.VarChar(1000)
+  created_on  DateTime   @default(now())
+  updated_on  DateTime?
+  created_by  Int?
+  updated_by  Int?
+  businesses  businesses @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  users       users      @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model user_preferences {
+  id          String    @id @unique @default(uuid())
+  user_id     String    @unique
+  preferences String
+  created_on  DateTime  @default(now())
+  updated_on  DateTime?
+  created_by  Int?
+  updated_by  Int?
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model user_votes {
+  id          String     @id @unique @default(uuid())
+  business_id String
+  user_id     String
+  upvote      Boolean?   @default(false)
+  downvote    Boolean?   @default(false)
+  created_on  DateTime   @default(now())
+  updated_on  DateTime?
+  created_by  Int?
+  updated_by  Int?
+  users       users      @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  businesses  businesses @relation(fields: [business_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model users {
+  id               String            @id @unique @default(uuid())
+  first_name       String            @db.VarChar(50)
+  last_name        String            @db.VarChar(50)
+  phone_number     String?           @unique @db.VarChar(30)
+  email            String            @unique @db.VarChar(75)
+  password         String
+  account_type     String?
+  date_of_birth    String?
+  full_address     String?
+  last_login       DateTime?
+  created_on       DateTime          @default(now())
+  updated_on       DateTime?
+  created_by       Int?
+  updated_by       Int?
+  businesses       businesses[]
+  user_preferences user_preferences?
+  user_votes       user_votes[]
+  user_comments    user_comments[]
+}
