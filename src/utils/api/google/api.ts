@@ -1,9 +1,9 @@
-// src/services/googlePlaces/api.ts
+/* -------------------------IMPORTS------------------------- */
 import axios from 'axios';
 import { z } from 'zod';
 import { googlePlacesLogger as logger } from '../../../lib/logger';
 
-// Types and Schemas
+/* -------------------------TYPES AND SCHEMAS------------------------- */
 export const LocationSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
@@ -34,14 +34,14 @@ export const PlaceDetailsSchema = z.object({
 
 export type PlaceDetails = z.infer<typeof PlaceDetailsSchema>;
 
-// Configuration
+// GooglePlaces API Configuration
 const API_CONFIG = {
   baseUrl: 'https://maps.googleapis.com/maps/api/place',
   key: process.env.GOOGLE_PLACES_API_KEY,
   searchRadius: 5000, // 5km radius
 };
 
-// Utility functions
+/* -------------------------FUNCTIONS------------------------- */
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const createUrlWithParams = (endpoint: string, params: Record<string, string>) => {
@@ -163,7 +163,7 @@ export const fetchPlaceDetails = async (placeId: string): Promise<PlaceDetails> 
   }
 };
 
-// Error handling utilities
+/* -------------------------ERROR HANDLING------------------------- */
 export class GooglePlacesError extends Error {
   constructor(
     message: string,
@@ -175,7 +175,7 @@ export class GooglePlacesError extends Error {
   }
 }
 
-// Rate limiting utilities
+/* -------------------------RATE LIMITING------------------------- */
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 100; // Minimum 100ms between requests
 

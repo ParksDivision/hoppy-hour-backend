@@ -1,8 +1,8 @@
 // src/services/yelp/index.ts
 import prisma from '../../../prismaClient';
-import { yelpLogger as logger } from '../../../lib/logger';
+import { logger } from '../../../lib/logger';
 import { searchBusinesses, fetchBusinessDetails, type YelpBusiness } from './api';
-import { AUSTIN_LOCATIONS } from '../google/index';
+import { AUSTIN_LOCATIONS } from '../google/enums'; // Reuse the same locations
 
 const processYelpData = (business: YelpBusiness) => ({
   placeId: `yelp_${business.id}`,
@@ -28,77 +28,44 @@ const processYelpData = (business: YelpBusiness) => ({
 });
 
 const updateYelpBusinessesForLocation = async (location: { lat: number; lng: number; name: string }) => {
-  const logContext = { location: location.name };
-  
   try {
-    logger.info(logContext, 'Starting Yelp update for location');
-    
+    logger.info(`Fetching Yelp businesses for ${location.name}`);
     const businesses = await searchBusinesses(location);
-    logger.info({ ...logContext, count: businesses.length }, 'Retrieved businesses');
-    
-    let successCount = 0;
-    let errorCount = 0;
     
     for (const business of businesses) {
       try {
         const details = await fetchBusinessDetails(business.id);
         const processedData = processYelpData(details);
         
-        await prisma.businesses.upsert({
+        await prisma.business.upsert({
           where: { placeId: processedData.placeId },
           update: processedData,
           create: processedData,
         });
-        
-        successCount++;
-        
-        logger.debug(
-          { ...logContext, businessId: business.id, name: business.name },
-          'Successfully processed business'
-        );
       } catch (error) {
-        errorCount++;
-        logger.error(
-          { err: error, ...logContext, businessId: business.id },
-          'Failed to process business'
-        );
+        logger.error(`Failed to process Yelp business ${business.id}:`, error);
         continue;
       }
     }
     
-    logger.info(
-      { ...logContext, successCount, errorCount, totalCount: businesses.length },
-      'Completed location update'
-    );
+    logger.info(`Completed Yelp update for ${location.name}`);
   } catch (error) {
-    logger.error(
-      { err: error, ...logContext },
-      'Failed to update location'
-    );
+    logger.error(`Failed to update Yelp businesses for ${location.name}:`, error);
     throw error;
   }
 };
 
 export const updateYelpData = async () => {
-  const startTime = Date.now();
-  logger.info('Starting Yelp data update for all locations');
-  
   try {
+    logger.info('Starting Yelp data update for all locations');
+    
     for (const location of AUSTIN_LOCATIONS) {
       await updateYelpBusinessesForLocation(location);
     }
     
-    const duration = Date.now() - startTime;
-    logger.info(
-      { duration, locationCount: AUSTIN_LOCATIONS.length },
-      'Completed Yelp data update for all locations'
-    );
+    logger.info('Completed Yelp data update for all locations');
   } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error(
-      { err: error, duration },
-      'Failed to complete Yelp data update'
-    );
+    logger.error('Failed to update Yelp data:', error);
     throw error;
   }
 };

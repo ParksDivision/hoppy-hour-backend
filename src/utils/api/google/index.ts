@@ -1,4 +1,4 @@
-// src/services/googlePlaces/index.ts
+/* -------------------------IMPORTS------------------------- */
 import prisma from '../../../prismaClient';
 import { googlePlacesLogger as logger } from '../../../lib/logger';
 import { 
@@ -8,15 +8,10 @@ import {
   type PlaceDetails,
   GooglePlacesError
 } from './api';
+import { AUSTIN_LOCATIONS } from './enums';
 
-// Austin neighborhood coordinates
-export const AUSTIN_LOCATIONS: Location[] = [
-  { lat: 30.2672, lng: -97.7431, name: 'Downtown Austin' },
-  { lat: 30.2983, lng: -97.7448, name: 'North Austin' },
-  { lat: 30.2270, lng: -97.7432, name: 'South Austin' },
-  { lat: 30.2867, lng: -97.7384, name: 'East Austin' },
-];
 
+/* -------------------------UTILITIES------------------------- */
 const processPlaceData = (place: PlaceDetails) => ({
   placeId: place.place_id,
   name: place.name,
@@ -34,6 +29,7 @@ const processPlaceData = (place: PlaceDetails) => ({
   source: 'GOOGLE' as const,
 });
 
+/* -------------------------FUNCTIONS------------------------- */
 const updateBusinessesForLocation = async (location: Location) => {
   const logContext = { location: location.name };
   
@@ -51,7 +47,7 @@ const updateBusinessesForLocation = async (location: Location) => {
         const details = await fetchPlaceDetails(business.place_id);
         const processedData = processPlaceData(details);
         
-        await prisma.businesses.upsert({
+        await prisma.business.upsert({
           where: { placeId: business.place_id },
           update: processedData,
           create: processedData,
