@@ -1,10 +1,10 @@
-import { businesses, Prisma } from '@prisma/client';
+import { Business, Prisma } from '@prisma/client';
 import prisma from '../prismaClient';
 
 
 // create one
-export const createBusinessService = async (data: Omit<businesses, 'id' | 'created_on' | 'updated_on'>) => {
-    return await prisma.businesses.create({
+export const createBusinessService = async (data: Prisma.BusinessCreateInput) => {
+    return await prisma.business.create({
       data
     });
   };
@@ -12,9 +12,9 @@ export const createBusinessService = async (data: Omit<businesses, 'id' | 'creat
 
 // create many
 export const createManyBusinessService = async (
-    data: Omit<businesses, 'id' | 'created_on' | 'updated_on'>[]
+    data: Prisma.BusinessCreateManyInput[]
   ) => {
-      return await prisma.businesses.createMany({
+      return await prisma.business.createMany({
         data,
         skipDuplicates: true // Optional: Avoid errors for duplicate records
       });
@@ -22,9 +22,9 @@ export const createManyBusinessService = async (
 
   // get one
   export const getOneBusinessService = async (
-      conditions: Prisma.businessesWhereUniqueInput
+      conditions: Prisma.BusinessWhereUniqueInput
     ) => {
-        return await prisma.businesses.findUnique({
+        return await prisma.business.findUnique({
           where: conditions
         });
     };
@@ -32,9 +32,9 @@ export const createManyBusinessService = async (
 
 // get many
 export const getManyBusinessService = async (
-    conditions?: Prisma.businessesWhereInput
+    conditions?: Prisma.BusinessWhereInput
   ) => {
-      return await prisma.businesses.findMany({
+      return await prisma.business.findMany({
         where: conditions
       });
   };
@@ -42,10 +42,10 @@ export const getManyBusinessService = async (
 
 // update one
 export const updateOneBusinessService = async (
-    data: Prisma.businessesUpdateInput
+    data: Prisma.BusinessUpdateInput
   ) => {
       const id = JSON.stringify(data.id)
-      return await prisma.businesses.update({
+      return await prisma.business.update({
         where: {
           id,
         },
@@ -55,10 +55,10 @@ export const updateOneBusinessService = async (
 
 // update many
 export const updateManyBusinessService = async (
-    data: Prisma.businessesUpdateManyMutationInput
+    data: Prisma.BusinessUpdateManyMutationInput
   ) => {
       const id = JSON.stringify(data.id)
-      return await prisma.businesses.updateMany({
+      return await prisma.business.updateMany({
         where: { id },
         data: data
       });
@@ -66,18 +66,18 @@ export const updateManyBusinessService = async (
 
 // delete one
 export const deleteOneBusinessService = async (
-    conditions: Prisma.businessesWhereUniqueInput
+    conditions: Prisma.BusinessWhereUniqueInput
   ) => {
-      return await prisma.businesses.delete({
+      return await prisma.business.delete({
         where: conditions,
       });
   };
 
 // delete many
 export const deleteManyBusinessService = async (
-    conditions: Prisma.businessesWhereInput
+    conditions: Prisma.BusinessWhereInput
   ) => {
-      return await prisma.businesses.deleteMany({
+      return await prisma.business.deleteMany({
         where: conditions,
       });
   };

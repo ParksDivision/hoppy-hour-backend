@@ -32,35 +32,34 @@ model api_data_yelp {
 }
 
 model Business {
-  id            String         @id @unique @default(uuid())
-  placeId       String?        @unique @map("place_id")
-  yelpId        String?        @unique @map("yelp_id")
-  userId        String?        @unique @map("user_id")
-  name          String
-  latitude      Float
-  longitude     Float
-  address       String
-  priceLevel    Int?           @map("price_level")
-  isBar         Boolean?       @default(false) @map("is_bar")
-  isRestaurant  Boolean?       @default(false) @map("is_restaurant")
-  url           String?
-  ratingOverall Float?         @map("rating_overall")
-  ratingYelp    Float?         @map("rating_yelp")
-  ratingGoogle  Float?         @map("rating_google")
-  googleData    Json?          @map("google_data")
-  yelpData      Json?          @map("yelp_data")
-  scrapedData   Json?          @map("scraped_data")
-  photos        Photo[]
-  dealInfo      DealInfo[]
-  userVotes     UserVotes[]
-  userComments  UserComments[]
-  user          User?          @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdOn     DateTime       @default(now()) @map("created_on")
-  createdBy     Int?           @map("created_by")
-  updatedOn     DateTime?      @updatedAt @map("updated_on")
-  updatedBy     Int?           @map("updated_by")
-  deletedOn     DateTime?      @map("deleted_on")
-  deletedBy     Int?           @map("deleted_by")
+  id             String         @id @unique @default(uuid())
+  placeId        String?        @unique @map("place_id")
+  yelpId         String?        @unique @map("yelp_id")
+  userId         String?        @unique @map("user_id")
+  name           String
+  latitude       Float
+  longitude      Float
+  address        String
+  phoneNumber    String?        @unique @map("phone_number") @db.VarChar(30)
+  priceLevel     Int?           @map("price_level")
+  isBar          Boolean?       @default(false) @map("is_bar")
+  isRestaurant   Boolean?       @default(false) @map("is_restaurant")
+  url            String?
+  ratingOverall  Float?         @map("rating_overall")
+  ratingYelp     Float?         @map("rating_yelp")
+  ratingGoogle   Float?         @map("rating_google")
+  operatingHours String?        @map("operating_hours")
+  photos         Photo[]
+  dealInfo       DealInfo[]
+  userVotes      UserVotes[]
+  userComments   UserComments[]
+  user           User?          @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdOn      DateTime       @default(now()) @map("created_on")
+  createdBy      Int?           @map("created_by")
+  updatedOn      DateTime?      @updatedAt @map("updated_on")
+  updatedBy      Int?           @map("updated_by")
+  deletedOn      DateTime?      @map("deleted_on")
+  deletedBy      Int?           @map("deleted_by")
 
   @@index([latitude, longitude])
   @@index([name])
@@ -69,23 +68,33 @@ model Business {
 }
 
 model Photo {
-  id          String    @id @unique @default(uuid())
-  businessId  String    @map("business_id")
-  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  sourceId    String    @map("source_id")
-  source      String
-  width       Int?
-  height      Int?
-  url         String?
-  mainPhoto   Boolean   @default(false) @map("main_photo")
-  lastFetched DateTime? @map("last_fetched")
-
-  createdOn DateTime  @default(now()) @map("created_on")
-  createdBy Int?      @map("created_by")
-  updatedOn DateTime? @updatedAt @map("updated_on")
-  updatedBy Int?      @map("updated_by")
-  deletedOn DateTime? @map("deleted_on")
-  deletedBy Int?      @map("deleted_by")
+  id             String    @id @unique @default(uuid())
+  businessId     String    @map("business_id")
+  business       Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sourceId       String    @map("source_id")
+  source         String
+  width          Int?
+  height         Int?
+  url            String?
+  mainPhoto      Boolean   @default(false) @map("main_photo")
+  lastFetched    DateTime? @map("last_fetched")
+  // AWS S3 keys and settings
+  s3Key          String?
+  s3KeyThumbnail String?
+  s3KeySmall     String?
+  s3KeyMedium    String?
+  s3KeyLarge     String?
+  format         String? // 'webp' or 'avif'
+  processingTime Float? // in milliseconds
+  fileSize       Int? // in bytes
+  lastProcessed  DateTime?
+  // Audit fields
+  createdOn      DateTime  @default(now()) @map("created_on")
+  createdBy      Int?      @map("created_by")
+  updatedOn      DateTime? @updatedAt @map("updated_on")
+  updatedBy      Int?      @map("updated_by")
+  deletedOn      DateTime? @map("deleted_on")
+  deletedBy      Int?      @map("deleted_by")
 
   @@unique([businessId, sourceId])
   @@index([businessId])

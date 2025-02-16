@@ -1,10 +1,10 @@
-import { users, Prisma } from '@prisma/client';
+import { User, Prisma } from '@prisma/client';
 import prisma from '../prismaClient';
 
 
 // create one
-export const createUserService = async (data: Prisma.usersCreateInput) => {
-    return await prisma.users.create({
+export const createUserService = async (data: Prisma.UserCreateInput) => {
+    return await prisma.user.create({
       data
     });
   };
@@ -12,9 +12,9 @@ export const createUserService = async (data: Prisma.usersCreateInput) => {
 
 // create many
 export const createManyUserService = async (
-    data: Prisma.usersCreateInput[]
+    data: Prisma.UserCreateInput[]
   ) => {
-      return await prisma.users.createMany({
+      return await prisma.user.createMany({
         data,
         skipDuplicates: true // Optional: Avoid errors for duplicate records
       });
@@ -22,9 +22,9 @@ export const createManyUserService = async (
 
   // get one
   export const getOneUserService = async (
-      conditions: Prisma.usersWhereUniqueInput
+      conditions: Prisma.UserWhereUniqueInput
     ) => {
-        return await prisma.users.findUnique({
+        return await prisma.user.findUnique({
           where: conditions
         });
     };
@@ -32,9 +32,9 @@ export const createManyUserService = async (
 
 // get many
 export const getManyUserService = async (
-    conditions?: Prisma.usersWhereInput
+    conditions?: Prisma.UserWhereInput
   ) => {
-      return await prisma.users.findMany({
+      return await prisma.user.findMany({
         where: conditions
       });
   };
@@ -42,10 +42,10 @@ export const getManyUserService = async (
 
 // update one
 export const updateOneUserService = async (
-    data: Prisma.usersUpdateInput
+    data: Prisma.UserUpdateInput
   ) => {
       const id = JSON.stringify(data.id)
-      return await prisma.users.update({
+      return await prisma.user.update({
         where: {
           id,
         },
@@ -55,10 +55,10 @@ export const updateOneUserService = async (
 
 // update many
 export const updateManyUserService = async (
-    data: Prisma.usersUpdateManyMutationInput
+    data: Prisma.UserUpdateManyMutationInput
   ) => {
       const id = JSON.stringify(data.id)
-      return await prisma.users.updateMany({
+      return await prisma.user.updateMany({
         where: { id },
         data: data
       });
@@ -66,18 +66,18 @@ export const updateManyUserService = async (
 
 // delete one
 export const deleteOneUserService = async (
-    conditions: Prisma.usersWhereUniqueInput
+    conditions: Prisma.UserWhereUniqueInput
   ) => {
-      return await prisma.users.delete({
+      return await prisma.user.delete({
         where: conditions,
       });
   };
 
 // delete many
 export const deleteManyUserService = async (
-    conditions: Prisma.usersWhereInput
+    conditions: Prisma.UserWhereInput
   ) => {
-      return await prisma.users.deleteMany({
+      return await prisma.user.deleteMany({
         where: conditions,
       });
   };

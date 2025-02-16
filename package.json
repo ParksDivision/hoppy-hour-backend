@@ -5,12 +5,13 @@
   "main": "src/server.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon src/server.ts"
+    "start": "ts-node src/server.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.9.1",
     "nodemon": "^3.1.7",
@@ -19,14 +20,22 @@
     "typescript": "^5.6.3"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.749.0",
+    "@aws-sdk/s3-request-presigner": "^3.749.0",
     "@bull-board/api": "^6.5.4",
     "@bull-board/express": "^6.5.4",
     "@prisma/client": "^6.1.0",
     "axios": "^1.7.9",
     "bull": "^4.16.5",
+    "cors": "^2.8.5",
+    "cron": "^3.5.0",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "node-cache": "^5.1.2",
+    "p-retry": "^6.2.1",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
+    "sharp": "^0.33.5",
     "zod": "^3.24.1"
   }
 }

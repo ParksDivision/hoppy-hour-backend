@@ -1,9 +1,17 @@
 import express from 'express'
 import router from './routes';
+import cors from 'cors';
 import { setupBullDashboard } from './utils/api/dashboard';
 import { initializeScheduler } from './utils/api/scheduler';
+import { oneTimeGoogleDataUpdate } from './utils/api/scheduler';
 
 const app = express()
+
+app.use(cors({
+    origin: process.env.NODE_ENV === 'production' 
+      ? 'your-production-domain.com' 
+      : 'http://localhost:3000'
+  }));
 
 app.use(express.json())
 
@@ -12,11 +20,5 @@ app.use('/', router);
 
 // Setup Bull dashboard
 setupBullDashboard(app);
-
-// // Initialize both Google and Yelp schedulers
-// initializeScheduler().catch(error => {
-//   console.error('Failed to initialize data retrieval schedulers:', error);
-//   process.exit(1);
-// });
 
 export default app

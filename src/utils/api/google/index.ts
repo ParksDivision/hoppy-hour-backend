@@ -2,35 +2,55 @@
 import prisma from '../../../prismaClient';
 import { googlePlacesLogger as logger } from '../../../lib/logger';
 import { 
-  fetchNearbyBusinesses, 
-  fetchPlaceDetails,
+  fetchNearbyBusinesses,
   type Location,
   type PlaceDetails,
   GooglePlacesError
 } from './api';
+import { processPlaceData } from './utilities';
 import { AUSTIN_LOCATIONS } from './enums';
-
-
-/* -------------------------UTILITIES------------------------- */
-const processPlaceData = (place: PlaceDetails) => ({
-  placeId: place.place_id,
-  name: place.name,
-  address: place.formatted_address,
-  latitude: place.geometry.location.lat,
-  longitude: place.geometry.location.lng,
-  rating: place.rating || null,
-  priceLevel: place.price_level || null,
-  website: place.website || null,
-  phoneNumber: place.formatted_phone_number || null,
-  isBar: place.types.includes('bar'),
-  isRestaurant: place.types.includes('restaurant'),
-  openingHours: place.opening_hours?.weekday_text || [],
-  lastUpdated: new Date(),
-  source: 'GOOGLE' as const,
-});
+import { Photo } from '@prisma/client';
+import { OptimizedS3Service } from '../../../utils/enhancedS3Service';
+import axios from 'axios';
 
 /* -------------------------FUNCTIONS------------------------- */
-const updateBusinessesForLocation = async (location: Location) => {
+async function processAndUploadPhoto(photo: any, businessId: string) {
+  try {
+    // Download image from Google Places
+    const imageResponse = await axios.get(photo.googleMapsUri, {
+      responseType: 'arraybuffer'
+    });
+    
+    // Process and upload all variants to S3
+    const processedImages = await OptimizedS3Service.uploadImageWithVariants(
+      Buffer.from(imageResponse.data),
+      businessId,
+      photo.name
+    );
+
+    return {
+      sourceId: photo.name,
+      source: 'GOOGLE',
+      width: photo.widthPx,
+      height: photo.heightPx,
+      url: photo.googleMapsUri,
+      s3Key: processedImages.original,
+      s3KeyThumbnail: processedImages.thumbnail,
+      s3KeySmall: processedImages.small,
+      s3KeyMedium: processedImages.medium,
+      s3KeyLarge: processedImages.large,
+      mainPhoto: false // Will be set by the calling function
+    };
+  } catch (error) {
+    logger.error(
+      { err: error, businessId, photoName: photo.name },
+      'Failed to process and upload photo'
+    );
+    throw error;
+  }
+}
+
+export const updateBusinessesForLocation = async (location: Location) => {
   const logContext = { location: location.name };
   
   try {
@@ -44,28 +64,61 @@ const updateBusinessesForLocation = async (location: Location) => {
     
     for (const business of businesses) {
       try {
-        const details = await fetchPlaceDetails(business.place_id);
-        const processedData = processPlaceData(details);
-        
-        await prisma.business.upsert({
-          where: { placeId: business.place_id },
-          update: processedData,
-          create: processedData,
+        await prisma.$transaction(async (tx) => {
+          // Process and upsert business info
+          const businessData = processPlaceData(business);
+          const upsertedBusiness = await tx.business.upsert({
+            where: { placeId: business.id },
+            create: { ...businessData, createdOn: new Date() },
+            update: { ...businessData, updatedOn: new Date() }
+          });
+
+          // Process photos if they exist
+          if (business.photos?.length) {
+            try {
+              // Process all photos in parallel
+              const processedPhotos = await Promise.all(
+                business.photos.map((photo: any, index: number) => 
+                  processAndUploadPhoto(photo, upsertedBusiness.id)
+                    .then(photoData => ({
+                      ...photoData,
+                      mainPhoto: index === 0
+                    }))
+                )
+              );
+
+              // Create all photos in the database
+              await tx.photo.createMany({
+                data: processedPhotos.map(photo => ({
+                  ...photo,
+                  businessId: upsertedBusiness.id,
+                  createdOn: new Date(),
+                  lastFetched: new Date()
+                }))
+              });
+
+            } catch (error) {
+              logger.error(
+                { err: error, businessId: upsertedBusiness.id },
+                'Failed to process photos'
+              );
+              throw error;
+            }
+          }
         });
-        
+ 
         successCount++;
-        
         logger.debug(
-          { ...logContext, businessId: business.place_id, name: details.name },
+          { ...logContext, businessId: business.id, name: business.name },
           'Successfully processed business'
         );
       } catch (error) {
         errorCount++;
         logger.error(
-          { err: error, ...logContext, businessId: business.place_id },
+          { err: error, ...logContext, businessId: business.id },
           'Failed to process business'
         );
-        continue; // Skip this business but continue with others
+        continue;
       }
     }
     
@@ -77,31 +130,6 @@ const updateBusinessesForLocation = async (location: Location) => {
     logger.error(
       { err: error, ...logContext },
       'Failed to update location'
-    );
-    throw error;
-  }
-};
-
-export const updateGooglePlacesData = async () => {
-  const startTime = Date.now();
-  logger.info('Starting Google Places data update for all locations');
-  
-  try {
-    // Process locations sequentially to respect API rate limits
-    for (const location of AUSTIN_LOCATIONS) {
-      await updateBusinessesForLocation(location);
-    }
-    
-    const duration = Date.now() - startTime;
-    logger.info(
-      { duration, locationCount: AUSTIN_LOCATIONS.length },
-      'Completed Google Places data update for all locations'
-    );
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    logger.error(
-      { err: error, duration },
-      'Failed to complete Google Places data update'
     );
     throw error;
   }
