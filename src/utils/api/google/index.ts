@@ -10,22 +10,43 @@ import {
 import { processPlaceData } from './utilities';
 import { AUSTIN_LOCATIONS } from './enums';
 import { Photo } from '@prisma/client';
-import { OptimizedS3Service } from '../../../utils/enhancedS3Service';
+import { uploadImageWithVariants } from '../../../utils/enhancedS3Service';
 import axios from 'axios';
 
 /* -------------------------FUNCTIONS------------------------- */
 async function processAndUploadPhoto(photo: any, businessId: string) {
   try {
-    // Download image from Google Places
-    const imageResponse = await axios.get(photo.googleMapsUri, {
-      responseType: 'arraybuffer'
+    // Construct the correct Google Places photo URL
+    const photoUrl = `https://places.googleapis.com/v1/${photo.name}/media?key=${process.env.GOOGLE_PLACES_API_KEY}&maxHeightPx=1200&maxWidthPx=1200`;
+
+    // Download image with proper headers
+    const imageResponse = await axios.get(photoUrl, {
+      responseType: 'arraybuffer',
+      headers: {
+        'X-Goog-Api-Key': process.env.GOOGLE_PLACES_API_KEY,
+        'X-Goog-FieldMask': '*',
+        'Accept': 'image/*'
+      },
+      maxRedirects: 5,
+      timeout: 10000
     });
-    
-    // Process and upload all variants to S3
-    const processedImages = await OptimizedS3Service.uploadImageWithVariants(
+
+    // Verify we got an image
+    const contentType = imageResponse.headers['content-type'];
+    if (!contentType || !contentType.startsWith('image/')) {
+      console.error('Invalid response:', {
+        contentType,
+        responseLength: imageResponse.data.length,
+        photoUrl
+      });
+      throw new Error(`Invalid content type: ${contentType}`);
+    }
+
+    // Process and upload to S3
+    const processedImages = await uploadImageWithVariants(
       Buffer.from(imageResponse.data),
       businessId,
-      photo.name
+      photo.name.replace(/[^a-zA-Z0-9-_]/g, '_') // Sanitize the photo name
     );
 
     return {
@@ -33,20 +54,27 @@ async function processAndUploadPhoto(photo: any, businessId: string) {
       source: 'GOOGLE',
       width: photo.widthPx,
       height: photo.heightPx,
-      url: photo.googleMapsUri,
+      url: photoUrl, // Store the actual photo URL we used
       s3Key: processedImages.original,
       s3KeyThumbnail: processedImages.thumbnail,
       s3KeySmall: processedImages.small,
       s3KeyMedium: processedImages.medium,
       s3KeyLarge: processedImages.large,
-      mainPhoto: false // Will be set by the calling function
+      mainPhoto: false
     };
   } catch (error) {
     logger.error(
-      { err: error, businessId, photoName: photo.name },
+      { 
+        err: error, 
+        businessId, 
+        photoName: photo.name,
+        photoUrl: photo.googleMapsUri 
+      },
       'Failed to process and upload photo'
     );
-    throw error;
+    
+    // Don't throw the error, return null instead to allow other photos to process
+    return null;
   }
 }
 
@@ -74,38 +102,42 @@ export const updateBusinessesForLocation = async (location: Location) => {
           });
 
           // Process photos if they exist
-          if (business.photos?.length) {
-            try {
-              // Process all photos in parallel
-              const processedPhotos = await Promise.all(
-                business.photos.map((photo: any, index: number) => 
-                  processAndUploadPhoto(photo, upsertedBusiness.id)
-                    .then(photoData => ({
-                      ...photoData,
-                      mainPhoto: index === 0
-                    }))
-                )
-              );
+    if (business.photos?.length) {
+      try {
+      // Process all photos in parallel
+      const processedPhotos = await Promise.all(
+        business.photos.map((photo: any, index: number) => 
+          processAndUploadPhoto(photo, upsertedBusiness.id)
+        )
+      );
 
-              // Create all photos in the database
-              await tx.photo.createMany({
-                data: processedPhotos.map(photo => ({
-                  ...photo,
-                  businessId: upsertedBusiness.id,
-                  createdOn: new Date(),
-                  lastFetched: new Date()
-                }))
-              });
+      // Filter out null results from failed photos
+      const validPhotos = processedPhotos.filter(photo => photo !== null)
+        .map((photo, index) => ({
+          ...photo,
+          mainPhoto: index === 0
+        }));
 
-            } catch (error) {
-              logger.error(
-                { err: error, businessId: upsertedBusiness.id },
-                'Failed to process photos'
-              );
-              throw error;
-            }
-          }
+      if (validPhotos.length > 0) {
+        // Create all photos in the database
+        await tx.photo.createMany({
+          data: validPhotos.map(photo => ({
+            ...photo,
+            businessId: upsertedBusiness.id,
+            createdOn: new Date(),
+            lastFetched: new Date()
+          }))
         });
+      }
+    } catch (error) {
+      logger.error(
+        { err: error, businessId: upsertedBusiness.id },
+        'Failed to process photos'
+      );
+    // Continue with other businesses even if photos fail
+    }
+  }
+});
  
         successCount++;
         logger.debug(

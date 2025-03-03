@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { OptimizedS3Service } from '../utils/enhancedS3Service';
+import { uploadImage, getImageUrl } from '../utils/enhancedS3Service';
 import { logger } from '../lib/logger';
 import sharp from 'sharp';
 import path from 'path';
@@ -23,7 +23,7 @@ imageRoutes.post('/test-upload', async (req, res) => {
 
     console.log('Image processed successfully');
     
-    const key = await OptimizedS3Service.uploadImage(
+    const key = await uploadImage(
       processedBuffer,
       'test-business',
       'test-photo-' + Date.now()
@@ -48,7 +48,7 @@ imageRoutes.get('/:key(*)/url', async (req, res) => {
     try {
       const { key } = req.params;
       console.log('Requesting URL for key:', key); // Debug log
-      const url = await OptimizedS3Service.getImageUrl(key);
+      const url = await getImageUrl(key);
       res.json({ url });
     } catch (error) {
       console.error('Error generating URL:', error);

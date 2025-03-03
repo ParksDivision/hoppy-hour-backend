@@ -7,9 +7,10 @@ import imageRoutes from './imageRoutes';
 const router = Router();
 
 // Route for user-related APIs
-router.use('/users', userRoutes)
+router.use('api/users', userRoutes)
 
 // Route for business-related APIs
+router.use('api/business', businessRoutes)
 router.use('/business', businessRoutes)
 
 // Route for Yelp API data intake

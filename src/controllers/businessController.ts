@@ -9,6 +9,8 @@ import {
     deleteManyBusinessService,
     getOneBusinessService
 } from '../services/businessService';
+import prisma from '../prismaClient';
+import { getImageUrl } from '../utils/enhancedS3Service';
 
 export const getOneBusiness = async (req: Request, res: Response) => {
     try {
@@ -122,4 +124,44 @@ export const deleteManyBusinesses = async (req: Request, res: Response) => {
         console.error("Error deleting businesses", error)
         res.status(500).json({message: "Error deleting businesses"})
     }
+};
+
+export const getBusinessPhotos = async (req: Request, res: Response) => {
+  try {
+    const { businessId } = req.params;
+    
+    const photos = await prisma.photo.findMany({
+      where: { businessId },
+      select: {
+        id: true,
+        s3Key: true,
+        s3KeyThumbnail: true,
+        s3KeySmall: true,
+        s3KeyMedium: true,
+        s3KeyLarge: true,
+        mainPhoto: true
+      }
+    });
+
+    // Get signed URLs for each photo variant
+    const photosWithUrls = await Promise.all(photos.map(async (photo) => {
+      const urls = {
+        original: photo.s3Key ? await getImageUrl(photo.s3Key) : null,
+        thumbnail: photo.s3KeyThumbnail ? await getImageUrl(photo.s3KeyThumbnail) : null,
+        small: photo.s3KeySmall ? await getImageUrl(photo.s3KeySmall) : null,
+        medium: photo.s3KeyMedium ? await getImageUrl(photo.s3KeyMedium) : null,
+        large: photo.s3KeyLarge ? await getImageUrl(photo.s3KeyLarge) : null
+      };
+
+      return {
+        ...photo,
+        urls
+      };
+    }));
+
+    res.json(photosWithUrls);
+  } catch (error) {
+    console.error('Error fetching business photos:', error);
+    res.status(500).json({ message: 'Error fetching business photos' });
+  }
 };

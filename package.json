@@ -24,7 +24,7 @@
     "@aws-sdk/s3-request-presigner": "^3.749.0",
     "@bull-board/api": "^6.5.4",
     "@bull-board/express": "^6.5.4",
-    "@prisma/client": "^6.1.0",
+    "@prisma/client": "^6.3.1",
     "axios": "^1.7.9",
     "bull": "^4.16.5",
     "cors": "^2.8.5",

@@ -1,9 +1,9 @@
-import { OptimizedS3Service } from '../utils/enhancedS3Service';
+import { cleanupUnusedImages, getMetrics } from '../utils/enhancedS3Service';
 import { logger } from '../lib/logger';
 import { CronJob } from 'cron';
 import prisma from '../prismaClient';
 
-async function cleanupUnusedImages() {
+async function cleanupImages() {
   try {
     logger.info('Starting image cleanup job');
 
@@ -33,10 +33,10 @@ async function cleanupUnusedImages() {
     });
 
     // Run the cleanup
-    await OptimizedS3Service.cleanupUnusedImages(30); // Clean images older than 30 days
+    await cleanupUnusedImages(30); // Clean images older than 30 days
 
     // Log metrics
-    const metrics = OptimizedS3Service.getMetrics();
+    const metrics = getMetrics();
     logger.info({ metrics }, 'Image processing metrics');
 
   } catch (error) {
