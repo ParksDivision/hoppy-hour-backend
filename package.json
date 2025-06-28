@@ -1,7 +1,7 @@
 {
   "name": "hoppy-hour",
   "version": "1.0.0",
-  "description": "",
+  "description": "Event-driven happy hour finder with multi-source data integration",
   "main": "src/server.ts",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
@@ -14,7 +14,12 @@
     "db:reset": "npx prisma migrate reset",
     "migrate:data": "ts-node scripts/migrateExistingData.ts"
   },
-  "keywords": [],
+  "keywords": [
+    "happy-hour",
+    "bars",
+    "restaurants",
+    "deals"
+  ],
   "author": "",
   "license": "ISC",
   "devDependencies": {

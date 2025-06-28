@@ -7,94 +7,161 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model api_data_google {
-  id           String    @id @unique @default(uuid())
-  requested_on DateTime
-  data         String
-  createdOn    DateTime  @default(now()) @map("created_on")
-  createdBy    Int?      @map("created_by")
-  updatedOn    DateTime? @updatedAt @map("updated_on")
-  updatedBy    Int?      @map("updated_by")
-  deletedOn    DateTime? @map("deleted_on")
-  deletedBy    Int?      @map("deleted_by")
-}
-
-model api_data_yelp {
-  id           String    @id @unique @default(uuid())
-  requested_on DateTime
-  data         String
-  createdOn    DateTime  @default(now()) @map("created_on")
-  createdBy    Int?      @map("created_by")
-  updatedOn    DateTime? @updatedAt @map("updated_on")
-  updatedBy    Int?      @map("updated_by")
-  deletedOn    DateTime? @map("deleted_on")
-  deletedBy    Int?      @map("deleted_by")
-}
-
 model Business {
-  id             String         @id @unique @default(uuid())
-  placeId        String?        @unique @map("place_id")
-  yelpId         String?        @unique @map("yelp_id")
-  userId         String?        @unique @map("user_id")
-  name           String
-  latitude       Float
-  longitude      Float
-  address        String
-  phoneNumber    String?        @unique @map("phone_number") @db.VarChar(30)
-  priceLevel     Int?           @map("price_level")
-  isBar          Boolean?       @default(false) @map("is_bar")
-  isRestaurant   Boolean?       @default(false) @map("is_restaurant")
-  url            String?
-  ratingOverall  Float?         @map("rating_overall")
-  ratingYelp     Float?         @map("rating_yelp")
-  ratingGoogle   Float?         @map("rating_google")
-  operatingHours String?        @map("operating_hours")
-  photos         Photo[]
-  dealInfo       DealInfo[]
-  userVotes      UserVotes[]
-  userComments   UserComments[]
-  user           User?          @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdOn      DateTime       @default(now()) @map("created_on")
-  createdBy      Int?           @map("created_by")
-  updatedOn      DateTime?      @updatedAt @map("updated_on")
-  updatedBy      Int?           @map("updated_by")
-  deletedOn      DateTime?      @map("deleted_on")
-  deletedBy      Int?           @map("deleted_by")
+  id String @id @default(uuid())
+
+  // External source IDs
+  placeId String? @unique @map("place_id")
+  yelpId  String? @unique @map("yelp_id")
+  userId  String? @unique @map("user_id")
+
+  // Core business data
+  name              String
+  normalizedName    String? @map("normalized_name")
+  address           String
+  normalizedAddress String? @map("normalized_address")
+  phone             String?
+  normalizedPhone   String? @map("normalized_phone")
+  website           String?
+  domain            String?
+
+  // Geographic data
+  latitude  Float
+  longitude Float
+
+  // Business classification
+  isBar        Boolean? @default(false) @map("is_bar")
+  isRestaurant Boolean? @default(false) @map("is_restaurant")
+  categories   String[] @default([])
+
+  // Ratings and aggregated data
+  ratingGoogle   Float?   @map("rating_google")
+  ratingYelp     Float?   @map("rating_yelp")
+  ratingOverall  Float?   @map("rating_overall")
+  priceLevel     Int?     @map("price_level")
+  operatingHours String[] @default([]) @map("operating_hours")
+
+  // Deduplication metadata
+  confidence   Float     @default(1.0)
+  lastAnalyzed DateTime? @map("last_analyzed")
+
+  // Relationships
+  photos           Photo[]
+  deals            Deal[]
+  userVotes        UserVotes[]
+  userComments     UserComments[]
+  user             User?            @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sourceBusinesses SourceBusiness[]
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@index([latitude, longitude])
+  @@index([normalizedName])
+  @@index([domain])
+  @@index([normalizedPhone])
   @@index([name])
   @@index([isBar, isRestaurant])
   @@map("businesses")
 }
 
-model Photo {
-  id             String    @id @unique @default(uuid())
-  businessId     String    @map("business_id")
-  business       Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  sourceId       String    @map("source_id")
-  source         String
-  width          Int?
-  height         Int?
-  url            String?
-  mainPhoto      Boolean   @default(false) @map("main_photo")
-  lastFetched    DateTime? @map("last_fetched")
-  // AWS S3 keys and settings
-  s3Key          String?
-  s3KeyThumbnail String?
-  s3KeySmall     String?
-  s3KeyMedium    String?
-  s3KeyLarge     String?
-  format         String? // 'webp' or 'avif'
-  processingTime Float? // in milliseconds
-  fileSize       Int? // in bytes
-  lastProcessed  DateTime?
+model SourceBusiness {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  source   String // 'GOOGLE', 'YELP', 'FACEBOOK', etc.
+  sourceId String @map("source_id")
+  rawData  Json   @map("raw_data")
+
+  lastFetched DateTime @map("last_fetched")
+
   // Audit fields
-  createdOn      DateTime  @default(now()) @map("created_on")
-  createdBy      Int?      @map("created_by")
-  updatedOn      DateTime? @updatedAt @map("updated_on")
-  updatedBy      Int?      @map("updated_by")
-  deletedOn      DateTime? @map("deleted_on")
-  deletedBy      Int?      @map("deleted_by")
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
+
+  @@unique([source, sourceId])
+  @@index([businessId])
+  @@map("source_businesses")
+}
+
+model Deal {
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  // Deal specifics
+  title       String
+  description String
+
+  // Timing
+  dayOfWeek  Int?      @map("day_of_week") // 0-6, null for daily deals
+  startTime  String?   @map("start_time") // "16:00"
+  endTime    String?   @map("end_time") // "19:00"
+  validFrom  DateTime? @map("valid_from")
+  validUntil DateTime? @map("valid_until")
+
+  // AI analysis metadata
+  extractedBy String  @map("extracted_by") // 'AI', 'MANUAL', 'API'
+  confidence  Float   @default(1.0)
+  sourceText  String? @map("source_text")
+
+  // Status
+  isActive   Boolean @default(true) @map("is_active")
+  isVerified Boolean @default(false) @map("is_verified")
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
+
+  @@index([isActive, dayOfWeek])
+  @@index([businessId, isActive])
+  @@map("deals")
+}
+
+model Photo {
+  id          String    @id @default(uuid())
+  businessId  String    @map("business_id")
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sourceId    String    @map("source_id")
+  source      String
+  width       Int?
+  height      Int?
+  url         String?
+  mainPhoto   Boolean   @default(false) @map("main_photo")
+  lastFetched DateTime? @map("last_fetched")
+
+  // S3 storage
+  s3Key          String?   @map("s3_key")
+  s3KeyThumbnail String?   @map("s3_key_thumbnail")
+  s3KeySmall     String?   @map("s3_key_small")
+  s3KeyMedium    String?   @map("s3_key_medium")
+  s3KeyLarge     String?   @map("s3_key_large")
+  format         String?
+  processingTime Float?    @map("processing_time")
+  fileSize       Int?      @map("file_size")
+  lastProcessed  DateTime? @map("last_processed")
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@unique([businessId, sourceId])
   @@index([businessId])
@@ -102,96 +169,125 @@ model Photo {
   @@map("photos")
 }
 
-model DealInfo {
-  id         String    @id @unique @default(uuid())
-  businessId String    @map("business_id")
-  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  dayOfWeek  Int       @map("day_of_week")
-  startTime  String    @map("start_time")
-  endTime    String    @map("end_time")
-  deals      String[]
-  createdOn  DateTime  @default(now()) @map("created_on")
-  createdBy  Int?      @map("created_by")
-  updatedOn  DateTime? @updatedAt @map("updated_on")
-  updatedBy  Int?      @map("updated_by")
-  deletedOn  DateTime? @map("deleted_on")
-  deletedBy  Int?      @map("deleted_by")
-
-  @@index([businessId, dayOfWeek])
-  @@map("deal_info")
-}
-
 model User {
-  id              String           @id @unique @default(uuid())
-  firstName       String           @map("first_name") @db.VarChar(50)
-  lastName        String           @map("last_name") @db.VarChar(50)
-  email           String           @unique @db.VarChar(75)
-  phoneNumber     String?          @unique @map("phone_number") @db.VarChar(30)
-  password        String
-  accountType     String?          @map("account_type")
-  dateOfBirth     String?          @map("date_of_birth")
-  address         String?
-  lastLogin       DateTime?        @map("last_login")
+  id          String    @id @default(uuid())
+  firstName   String    @map("first_name") @db.VarChar(50)
+  lastName    String    @map("last_name") @db.VarChar(50)
+  email       String    @unique @db.VarChar(75)
+  phoneNumber String?   @unique @map("phone_number") @db.VarChar(30)
+  password    String
+  accountType String?   @map("account_type")
+  dateOfBirth String?   @map("date_of_birth")
+  address     String?
+  lastLogin   DateTime? @map("last_login")
+
+  // Relationships
   business        Business[]
   userPreferences UserPreferences?
   userVotes       UserVotes[]
   userComments    UserComments[]
-  createdOn       DateTime         @default(now()) @map("created_on")
-  createdBy       Int?             @map("created_by")
-  updatedOn       DateTime?        @updatedAt @map("updated_on")
-  updatedBy       Int?             @map("updated_by")
-  deletedOn       DateTime?        @map("deleted_on")
-  deletedBy       Int?             @map("deleted_by")
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@map("users")
 }
 
 model UserComments {
-  id         String    @id @unique @default(uuid())
-  businessId String    @map("business_id")
-  userId     String    @map("user_id")
-  comment    String    @db.VarChar(1000)
-  business   Business  @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user       User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdOn  DateTime  @default(now()) @map("created_on")
-  createdBy  Int?      @map("created_by")
-  updatedOn  DateTime? @updatedAt @map("updated_on")
-  updatedBy  Int?      @map("updated_by")
-  deletedOn  DateTime? @map("deleted_on")
-  deletedBy  Int?      @map("deleted_by")
+  id         String @id @default(uuid())
+  businessId String @map("business_id")
+  userId     String @map("user_id")
+  comment    String @db.VarChar(1000)
+
+  // Relationships
+  business Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user     User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // Audit field
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@map("user_comments")
 }
 
 model UserPreferences {
-  id          String    @id @unique @default(uuid())
-  userId      String    @unique @map("user_id")
+  id          String @id @default(uuid())
+  userId      String @unique @map("user_id")
   preferences String
-  createdOn   DateTime  @default(now()) @map("created_on")
-  createdBy   Int?      @map("created_by")
-  updatedOn   DateTime? @updatedAt @map("updated_on")
-  updatedBy   Int?      @map("updated_by")
-  deletedOn   DateTime? @map("deleted_on")
-  deletedBy   Int?      @map("deleted_by")
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  // Relationships
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@map("user_preferences")
 }
 
 model UserVotes {
-  id         String    @id @unique @default(uuid())
-  businessId String    @map("business_id")
-  userId     String    @map("user_id")
-  upvote     Boolean?  @default(false)
-  downvote   Boolean?  @default(false)
-  user       User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  business   Business  @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  createdOn  DateTime  @default(now()) @map("created_on")
-  createdBy  Int?      @map("created_by")
-  updatedOn  DateTime? @updatedAt @map("updated_on")
-  updatedBy  Int?      @map("updated_by")
-  deletedOn  DateTime? @map("deleted_on")
-  deletedBy  Int?      @map("deleted_by")
+  id         String   @id @default(uuid())
+  businessId String   @map("business_id")
+  userId     String   @map("user_id")
+  upvote     Boolean? @default(false)
+  downvote   Boolean? @default(false)
+
+  // Relationships
+  user     User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  business Business @relation(fields: [businessId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
 
   @@map("user_votes")
+}
+
+model ApiDataGoogle {
+  id          String   @id @default(uuid())
+  requestedOn DateTime @map("requested_on")
+  data        String
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
+
+  @@map("api_data_google")
+}
+
+model ApiDataYelp {
+  id          String   @id @default(uuid())
+  requestedOn DateTime @map("requested_on")
+  data        String
+
+  // Audit fields
+  createdOn DateTime  @default(now()) @map("created_on")
+  createdBy Int?      @map("created_by")
+  updatedOn DateTime? @updatedAt @map("updated_on")
+  updatedBy Int?      @map("updated_by")
+  deletedOn DateTime? @map("deleted_on")
+  deletedBy Int?      @map("deleted_by")
+
+  @@map("api_data_yelp")
 }
