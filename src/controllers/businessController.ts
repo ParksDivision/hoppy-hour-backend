@@ -16,7 +16,7 @@ import {
 import prisma from '../prismaClient';
 import { getImageUrl } from '../utils/enhancedS3Service';
 
-export const getOneBusiness = async (req: Request, res: Response) => {
+export const getOneBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
         
@@ -24,7 +24,8 @@ export const getOneBusiness = async (req: Request, res: Response) => {
         const business = id ? await findBusinessById(id) : await getOneBusinessService(req.body);
 
         if (!business) {
-            return res.status(404).json({ message: "Business not found." });
+            res.status(404).json({ message: "Business not found." });
+            return;
         }
         
         res.status(200).json(business);
@@ -34,7 +35,7 @@ export const getOneBusiness = async (req: Request, res: Response) => {
     }
 };
 
-export const getManyBusinesses = async (req: Request, res: Response) => {
+export const getManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
         // Support both query parameters and body for search criteria
         const criteria = {
@@ -52,7 +53,8 @@ export const getManyBusinesses = async (req: Request, res: Response) => {
             : await getManyBusinessService(req.body);
 
         if (!businesses || businesses.length === 0) {
-            return res.status(404).json({ message: "Businesses not found." });
+            res.status(404).json({ message: "Businesses not found." });
+            return;
         }
         
         res.json(businesses);
@@ -62,12 +64,13 @@ export const getManyBusinesses = async (req: Request, res: Response) => {
     }
 };
 
-export const createBusiness = async (req: Request, res: Response) => {
+export const createBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const business = await createBusinessService(req.body);
 
         if (!business) {
-            return res.status(400).json({ message: "Business not created." });
+            res.status(400).json({ message: "Business not created." });
+            return;
         }
         
         res.status(201).json(business);
@@ -77,12 +80,13 @@ export const createBusiness = async (req: Request, res: Response) => {
     }
 };
 
-export const createManyBusinesses = async (req: Request, res: Response) => {
+export const createManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
         const businesses = await createManyBusinessService(req.body);
 
         if (!businesses) {
-            return res.status(400).json({ message: "Businesses not created." });
+            res.status(400).json({ message: "Businesses not created." });
+            return;
         }
         
         res.status(201).json(businesses);
@@ -92,12 +96,13 @@ export const createManyBusinesses = async (req: Request, res: Response) => {
     }
 };
 
-export const updateBusiness = async (req: Request, res: Response) => {
+export const updateBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const updatedBusiness = await updateOneBusinessService(req.body);
 
         if (!updatedBusiness) {
-            return res.status(404).json({ message: "Business not updated." });
+            res.status(404).json({ message: "Business not updated." });
+            return;
         }
         
         res.status(200).json(updatedBusiness);
@@ -107,12 +112,13 @@ export const updateBusiness = async (req: Request, res: Response) => {
     }
 };
 
-export const updateManyBusinesses = async (req: Request, res: Response) => {
+export const updateManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
         const updatedBusinesses = await updateManyBusinessService(req.body);
 
         if (!updatedBusinesses) {
-            return res.status(404).json({ message: "Businesses not updated." });
+            res.status(404).json({ message: "Businesses not updated." });
+            return;
         }
         
         res.status(200).json(updatedBusinesses);
@@ -122,12 +128,13 @@ export const updateManyBusinesses = async (req: Request, res: Response) => {
     }
 };
 
-export const deleteBusiness = async (req: Request, res: Response) => {
+export const deleteBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const deletedBusiness = await deleteOneBusinessService(req.body);
 
         if (!deletedBusiness) {
-            return res.status(404).json({ message: "Business not deleted." });
+            res.status(404).json({ message: "Business not deleted." });
+            return;
         }
         
         res.status(204).json(deletedBusiness);
@@ -137,12 +144,13 @@ export const deleteBusiness = async (req: Request, res: Response) => {
     }
 };
 
-export const deleteManyBusinesses = async (req: Request, res: Response) => {
+export const deleteManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
         const deletedBusinesses = await deleteManyBusinessService(req.body);
 
         if (!deletedBusinesses) {
-            return res.status(404).json({ message: "Businesses not deleted." });
+            res.status(404).json({ message: "Businesses not deleted." });
+            return;
         }
         
         res.status(204).json(deletedBusinesses);
@@ -152,7 +160,7 @@ export const deleteManyBusinesses = async (req: Request, res: Response) => {
     }
 };
 
-export const getBusinessPhotos = async (req: Request, res: Response) => {
+export const getBusinessPhotos = async (req: Request, res: Response): Promise<void> => {
     try {
         const { businessId } = req.params;
         
@@ -193,14 +201,15 @@ export const getBusinessPhotos = async (req: Request, res: Response) => {
 };
 
 // New functional endpoints leveraging the repository layer
-export const searchBusinessesByLocation = async (req: Request, res: Response) => {
+export const searchBusinessesByLocation = async (req: Request, res: Response): Promise<void> => {
     try {
         const { lat, lng, radius = 1 } = req.query;
         
         if (!lat || !lng) {
-            return res.status(400).json({ 
+            res.status(400).json({ 
                 message: "Latitude and longitude are required" 
             });
+            return;
         }
 
         const businesses = await searchBusinesses({
@@ -225,7 +234,7 @@ export const searchBusinessesByLocation = async (req: Request, res: Response) =>
     }
 };
 
-export const getBusinessesByCategory = async (req: Request, res: Response) => {
+export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
     try {
         const { category } = req.params;
         const { isBar, isRestaurant } = req.query;
@@ -260,7 +269,7 @@ export const getBusinessesByCategory = async (req: Request, res: Response) => {
     }
 };
 
-export const getBusinessStats = async (req: Request, res: Response) => {
+export const getBusinessStats = async (req: Request, res: Response): Promise<void> => {
     try {
         // Get aggregated statistics using functional approach
         const totalBusinesses = await prisma.business.count();
@@ -281,8 +290,20 @@ export const getBusinessStats = async (req: Request, res: Response) => {
         });
 
         const sourceBreakdown = {
-            google: await prisma.business.count({ where: { placeId: { not: null } } }),
-            yelp: await prisma.business.count({ where: { yelpId: { not: null } } }),
+            google: await prisma.business.count({ 
+                where: { 
+                    placeId: { 
+                        not: null 
+                    } 
+                } 
+            }),
+            yelp: await prisma.business.count({ 
+                where: { 
+                    yelpId: { 
+                        not: null 
+                    } 
+                } 
+            }),
             manual: await prisma.business.count({ 
                 where: { 
                     AND: [

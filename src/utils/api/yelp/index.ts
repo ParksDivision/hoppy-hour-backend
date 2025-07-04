@@ -1,6 +1,6 @@
 // src/services/yelp/index.ts
 import prisma from '../../../prismaClient';
-import { logger } from '../../../lib/logger';
+import { logger } from '../../../utils/logger/logger';
 import { searchBusinesses, fetchBusinessDetails, type YelpBusiness } from './api';
 import { AUSTIN_LOCATIONS } from '../google/enums'; // Reuse the same locations
 

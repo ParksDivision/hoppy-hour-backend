@@ -157,7 +157,7 @@ app.post('/admin/test-events', async (req, res) => {
       type: 'business.raw.collected' as const,
       data: {
         sourceId: 'test-123',
-        source: 'GOOGLE',
+        source: 'GOOGLE' as const,
         rawData: {
           id: 'test-123',
           displayName: { text: 'Test Restaurant' },

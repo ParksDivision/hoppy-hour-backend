@@ -1,15 +1,11 @@
 /* -------------------------IMPORTS------------------------- */
 import prisma from '../../../prismaClient';
-import { googlePlacesLogger as logger } from '../../../lib/logger';
+import { googlePlacesLogger as logger } from '../../../utils/logger/logger';
 import { 
   fetchNearbyBusinesses,
   type Location,
-  type PlaceDetails,
-  GooglePlacesError
 } from './api';
 import { processPlaceData } from './utilities';
-import { AUSTIN_LOCATIONS } from './enums';
-import { Photo } from '@prisma/client';
 import { uploadImageWithVariants } from '../../../utils/enhancedS3Service';
 import axios from 'axios';
 

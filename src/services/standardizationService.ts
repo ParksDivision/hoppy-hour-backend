@@ -158,7 +158,9 @@ const extractYelpData = (data: any): any => ({
   operatingHours: formatYelpHours(data.hours)
 });
 
-const extractDataBySource = (rawData: any, source: string): any => {
+type BusinessSource = 'GOOGLE' | 'YELP' | 'FACEBOOK' | 'MANUAL';
+
+const extractDataBySource = (rawData: any, source: BusinessSource): any => {
   switch (source) {
     case 'GOOGLE':
       return extractGoogleData(rawData);
@@ -173,7 +175,7 @@ const extractDataBySource = (rawData: any, source: string): any => {
 const standardizeBusinessData = async (
   rawData: any,
   sourceId: string,
-  source: string
+  source: BusinessSource
 ): Promise<StandardizedBusiness> => {
   const extracted = extractDataBySource(rawData, source);
   
