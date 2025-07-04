@@ -1,7 +1,7 @@
 {
   "name": "hoppy-hour",
   "version": "1.0.0",
-  "description": "Event-driven happy hour finder with multi-source data integration",
+  "description": "Event-driven happy hour finder with multi-source data integration and Cloudflare CDN",
   "main": "src/server.ts",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
@@ -12,13 +12,18 @@
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",
     "db:reset": "npx prisma migrate reset",
-    "migrate:data": "ts-node scripts/migrateExistingData.ts"
+    "migrate:data": "ts-node scripts/migrateExistingData.ts",
+    "cost:report": "ts-node scripts/costReport.ts",
+    "cost:reset": "ts-node scripts/resetEmergencyMode.ts"
   },
   "keywords": [
     "happy-hour",
     "bars",
     "restaurants",
-    "deals"
+    "deals",
+    "cloudflare",
+    "cdn",
+    "cost-control"
   ],
   "author": "",
   "license": "ISC",

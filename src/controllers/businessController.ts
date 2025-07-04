@@ -14,7 +14,8 @@ import {
     searchBusinesses 
 } from '../repositories/businessRepository';
 import prisma from '../prismaClient';
-import { getImageUrl } from '../utils/enhancedS3Service';
+import { cloudflareS3Service } from '../utils/cloudflareS3Service'; // Updated import
+import { logger } from '../utils/logger/logger';
 
 export const getOneBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
@@ -163,34 +164,78 @@ export const deleteManyBusinesses = async (req: Request, res: Response): Promise
 export const getBusinessPhotos = async (req: Request, res: Response): Promise<void> => {
     try {
         const { businessId } = req.params;
+        const { useCDN = 'true' } = req.query;
         
         const photos = await prisma.photo.findMany({
             where: { businessId },
             select: {
                 id: true,
+                sourceId: true,
+                source: true,
+                width: true,
+                height: true,
+                url: true,
+                mainPhoto: true,
                 s3Key: true,
                 s3KeyThumbnail: true,
                 s3KeySmall: true,
                 s3KeyMedium: true,
-                s3KeyLarge: true,
-                mainPhoto: true
+                s3KeyLarge: true
             }
         });
 
-        // Get signed URLs for each photo variant
-        const photosWithUrls = await Promise.all(photos.map(async (photo) => {
-            const urls = {
-                original: photo.s3Key ? await getImageUrl(photo.s3Key) : null,
-                thumbnail: photo.s3KeyThumbnail ? await getImageUrl(photo.s3KeyThumbnail) : null,
-                small: photo.s3KeySmall ? await getImageUrl(photo.s3KeySmall) : null,
-                medium: photo.s3KeyMedium ? await getImageUrl(photo.s3KeyMedium) : null,
-                large: photo.s3KeyLarge ? await getImageUrl(photo.s3KeyLarge) : null
-            };
+        // If Cloudflare CDN is enabled and requested, generate CDN URLs
+        if (useCDN === 'true' && process.env.CLOUDFLARE_CDN_ENABLED === 'true') {
+            const photosWithCDNUrls = photos.map(photo => {
+                const cdnBaseUrl = process.env.CLOUDFLARE_CDN_BASE_URL;
+                
+                const generateCDNUrl = (s3Key: string | null) => 
+                    s3Key && cdnBaseUrl ? `${cdnBaseUrl}/${s3Key.replace(/^\/+/, '')}` : null;
 
-            return {
-                ...photo,
-                urls
-            };
+                return {
+                    ...photo,
+                    cdnUrls: {
+                        original: generateCDNUrl(photo.s3Key),
+                        thumbnail: generateCDNUrl(photo.s3KeyThumbnail),
+                        small: generateCDNUrl(photo.s3KeySmall),
+                        medium: generateCDNUrl(photo.s3KeyMedium),
+                        large: generateCDNUrl(photo.s3KeyLarge)
+                    }
+                };
+            });
+
+            res.json(photosWithCDNUrls);
+            return;
+        }
+
+        // Fallback: Get signed URLs from S3 (with cost control)
+        const photosWithUrls = await Promise.all(photos.map(async (photo) => {
+            try {
+                const urls = {
+                    original: photo.s3Key ? await cloudflareS3Service.getImageUrl(photo.s3Key, false) : null,
+                    thumbnail: photo.s3KeyThumbnail ? await cloudflareS3Service.getImageUrl(photo.s3KeyThumbnail, false) : null,
+                    small: photo.s3KeySmall ? await cloudflareS3Service.getImageUrl(photo.s3KeySmall, false) : null,
+                    medium: photo.s3KeyMedium ? await cloudflareS3Service.getImageUrl(photo.s3KeyMedium, false) : null,
+                    large: photo.s3KeyLarge ? await cloudflareS3Service.getImageUrl(photo.s3KeyLarge, false) : null
+                };
+
+                return {
+                    ...photo,
+                    urls
+                };
+            } catch (error) {
+                logger.error(`Failed to generate URLs for photo ${photo.id}`, { error });
+                return {
+                    ...photo,
+                    urls: {
+                        original: null,
+                        thumbnail: null,
+                        small: null,
+                        medium: null,
+                        large: null
+                    }
+                };
+            }
         }));
 
         res.json(photosWithUrls);
@@ -314,6 +359,9 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
             })
         };
 
+        // Get cost report from Cloudflare S3 service
+        const costReport = await cloudflareS3Service.getCostReport();
+
         res.json({
             totalBusinesses,
             breakdown: {
@@ -323,6 +371,12 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
             },
             averageRating: averageRating._avg.ratingOverall || 0,
             sources: sourceBreakdown,
+            costInfo: {
+                currentSpent: costReport.currentMonth.total,
+                remainingBudget: costReport.remainingBudget,
+                emergencyMode: costReport.emergencyMode,
+                projectedMonthly: costReport.projectedMonthly
+            },
             generatedAt: new Date().toISOString()
         });
     } catch (error) {
