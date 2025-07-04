@@ -3,7 +3,7 @@ dotenv.config();
 /* -------------------------IMPORTS------------------------- */
 import axios from 'axios';
 import { z } from 'zod';
-import { googlePlacesLogger as logger } from '../../../lib/logger';
+import { googlePlacesLogger as logger } from '../../../utils/logger/logger';
 import { PlaceDetailsSchema } from './enums';
 
 /* -------------------------TYPES AND SCHEMAS------------------------- */

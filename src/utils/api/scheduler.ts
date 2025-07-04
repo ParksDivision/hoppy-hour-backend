@@ -1,5 +1,5 @@
 import { queues } from '../../queues';
-import { logger } from '../../lib/logger';
+import { logger } from '../../utils/logger/logger';
 import { updateBusinessesForLocation } from './google';
 import { updateYelpData } from './yelp';
 import { AUSTIN_LOCATIONS, Location } from './google/enums';

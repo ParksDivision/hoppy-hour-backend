@@ -1,3 +1,5 @@
+import { Location, StandardizedBusiness } from '../types/business';
+
 export interface BaseEvent {
   id: string;
   timestamp: Date;

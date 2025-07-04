@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { uploadImage, getImageUrl } from '../utils/enhancedS3Service';
-import { logger } from '../lib/logger';
+import { logger } from '../utils/logger/logger';
 import sharp from 'sharp';
 import path from 'path';
 

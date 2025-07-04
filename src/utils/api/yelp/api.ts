@@ -1,7 +1,7 @@
 // src/services/yelp/api.ts
 import axios from 'axios';
 import { z } from 'zod';
-import { logger } from '../../../lib/logger';
+import { logger } from '../../../utils/logger/logger';
 import type { Location } from '../google/enums';
 
 // Types and Schemas

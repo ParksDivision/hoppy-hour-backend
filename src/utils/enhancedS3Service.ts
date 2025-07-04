@@ -9,7 +9,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import sharp from 'sharp';
 import NodeCache from 'node-cache';
-import { logger } from '../lib/logger';
+import { logger } from '../utils/logger/logger';
 import { performance } from 'perf_hooks';
 
 // Types

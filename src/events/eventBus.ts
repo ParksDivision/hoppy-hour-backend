@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { logger } from '../utils/logger';
+import { logger } from '../utils/logger/logger';
 import type { BusinessEvent } from './eventTypes';
 
 const eventEmitter = new EventEmitter();
@@ -32,6 +32,9 @@ export const subscribeToEvent = <T extends BusinessEvent>(
   });
 };
 
-export const removeEventSubscription = (eventType: string, handler: Function): void => {
+export const removeEventSubscription = (
+  eventType: string,
+  handler: (...args: any[]) => void
+): void => {
   eventEmitter.removeListener(eventType, handler);
 };

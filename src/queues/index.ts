@@ -1,5 +1,5 @@
 import Bull from 'bull';
-import { logger } from '../lib/logger';
+import { logger } from '../utils/logger/logger';
 
 // Queue configuration
 const REDIS_CONFIG = {

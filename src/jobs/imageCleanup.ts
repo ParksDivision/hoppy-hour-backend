@@ -1,5 +1,5 @@
 import { cleanupUnusedImages, getMetrics } from '../utils/enhancedS3Service';
-import { logger } from '../lib/logger';
+import { logger } from '../utils/logger/logger';
 import { CronJob } from 'cron';
 import prisma from '../prismaClient';
 
