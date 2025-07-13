@@ -1,0 +1,70 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches: [ main, develop ]  # Deploy on push to main or develop
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build
+      
+    - name: Deploy to Development Server
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.DEV_SERVER_HOST }}
+        username: ubuntu
+        key: ${{ secrets.DEV_SSH_KEY }}
+        script: |
+          # Navigate to app directory
+          cd ~/hoppy-hour-backend
+          
+          # Pull latest changes
+          git pull origin main
+          
+          # Install dependencies
+          npm ci
+          
+          # Build application
+          npm run build
+          
+          # Restart the application
+          pm2 restart hoppy-hour-dev
+          
+          # Show status
+          pm2 status
+          
+          # Wait a moment for app to start
+          sleep 3
+          
+          # Test the application
+          curl -f localhost:3001/health || echo "Health check failed"
+
+  test-deployment:
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Test Deployment
+      run: |
+        # Test external endpoint
+        curl -f http://${{ secrets.DEV_SERVER_HOST }}:3001/health || exit 1
+        echo "✅ Deployment successful!"
