@@ -36,27 +36,29 @@ export const getOneBusiness = async (req: Request, res: Response): Promise<void>
     }
 };
 
-// UPDATED: Now filters by deals by default
+// UPDATED: Now shows all businesses by default (after deduplication and photo processing)
 export const getManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { includeWithoutDeals = 'false', limit, offset } = req.query;
+        const { limit, offset, withPhotosOnly = 'false' } = req.query;
         
-        // Default behavior: only return businesses with active deals
-        const whereClause = includeWithoutDeals === 'true' 
-            ? {} // Return all businesses
-            : {
-                deals: {
-                    some: {
-                        isActive: true
-                    }
+        // Base query - all businesses
+        let whereClause: any = {};
+        
+        // Optional filter for businesses with photos only
+        if (withPhotosOnly === 'true') {
+            whereClause = {
+                photos: {
+                    some: {}
                 }
             };
+        }
 
         const businesses = await prisma.business.findMany({
             where: whereClause,
             include: {
                 photos: {
                     orderBy: { mainPhoto: 'desc' }, // Main photos first
+                    take: 5 // Limit photos per business for performance
                 },
                 deals: {
                     where: { isActive: true },
@@ -67,25 +69,37 @@ export const getManyBusinesses = async (req: Request, res: Response): Promise<vo
                 { ratingOverall: 'desc' },
                 { name: 'asc' }
             ],
-            take: limit ? parseInt(limit as string) : undefined,
+            take: limit ? parseInt(limit as string) : 50, // Default limit
             skip: offset ? parseInt(offset as string) : undefined
         });
 
         if (!businesses || businesses.length === 0) {
             res.status(404).json({ 
-                message: includeWithoutDeals === 'true' 
-                    ? "No businesses found." 
-                    : "No businesses with active deals found." 
+                message: withPhotosOnly === 'true' 
+                    ? "No businesses with photos found." 
+                    : "No businesses found." 
             });
             return;
         }
 
+        // Add computed fields for convenience
+        const enrichedBusinesses = businesses.map(business => ({
+            ...business,
+            hasPhotos: business.photos.length > 0,
+            hasDeals: business.deals.length > 0,
+            photoCount: business.photos.length,
+            activeDealsCount: business.deals.length
+        }));
+
         res.json({
-            businesses,
-            count: businesses.length,
-            note: includeWithoutDeals === 'true' 
-                ? "Showing all businesses" 
-                : "Showing only businesses with active deals (default behavior)"
+            businesses: enrichedBusinesses,
+            count: enrichedBusinesses.length,
+            filters: {
+                withPhotosOnly: withPhotosOnly === 'true',
+                limit: limit ? parseInt(limit as string) : 50,
+                offset: offset ? parseInt(offset as string) : 0
+            },
+            note: "Showing all processed businesses (deals processing is currently paused)"
         });
 
     } catch (error) {
@@ -94,7 +108,7 @@ export const getManyBusinesses = async (req: Request, res: Response): Promise<vo
     }
 };
 
-// NEW: Primary endpoint for frontend - businesses with current active deals
+// UPDATED: Simplified to show all businesses with optional deal filtering
 export const getBusinessesWithActiveDeals = async (req: Request, res: Response): Promise<void> => {
     try {
         const currentDay = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
@@ -129,14 +143,14 @@ export const getBusinessesWithActiveDeals = async (req: Request, res: Response):
             include: {
                 photos: {
                     orderBy: { mainPhoto: 'desc' },
-                    take: 5 // Limit photos per business
+                    take: 5
                 },
                 deals: {
                     where: {
                         isActive: true,
                         OR: [
                             { dayOfWeek: currentDay },
-                            { dayOfWeek: null } // All-day deals
+                            { dayOfWeek: null }
                         ]
                     },
                     orderBy: { startTime: 'asc' }
@@ -173,7 +187,8 @@ export const getBusinessesWithActiveDeals = async (req: Request, res: Response):
             count: enrichedBusinesses.length,
             currentDay: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][currentDay],
             currentTime,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            note: "Active deals endpoint - may return empty while deal processing is paused"
         });
 
     } catch (error) {
@@ -216,7 +231,7 @@ const formatTime = (time: string): string => {
     return `${hour12}:${minutes} ${ampm}`;
 };
 
-// NEW: Deal-focused business statistics
+// UPDATED: General business statistics (not deal-focused)
 export const getBusinessStatsForDeals = async (req: Request, res: Response): Promise<void> => {
     try {
         const totalBusinesses = await prisma.business.count();
@@ -231,14 +246,7 @@ export const getBusinessStatsForDeals = async (req: Request, res: Response): Pro
 
         const businessesWithPhotos = await prisma.business.count({
             where: {
-                AND: [
-                    {
-                        photos: { some: {} }
-                    },
-                    {
-                        deals: { some: { isActive: true } }
-                    }
-                ]
+                photos: { some: {} }
             }
         });
 
@@ -246,7 +254,7 @@ export const getBusinessStatsForDeals = async (req: Request, res: Response): Pro
             where: { isActive: true }
         });
 
-        // Deals by day of week
+        // Deals by day of week (if any exist)
         const dealsByDay = await prisma.deal.groupBy({
             by: ['dayOfWeek'],
             where: { isActive: true },
@@ -264,11 +272,6 @@ export const getBusinessStatsForDeals = async (req: Request, res: Response): Pro
         }, {} as Record<string, number>);
 
         const averageRating = await prisma.business.aggregate({
-            where: {
-                deals: {
-                    some: { isActive: true }
-                }
-            },
             _avg: {
                 ratingOverall: true
             }
@@ -279,18 +282,18 @@ export const getBusinessStatsForDeals = async (req: Request, res: Response): Pro
             businessesWithDeals,
             businessesWithoutDeals: totalBusinesses - businessesWithDeals,
             businessesWithPhotos,
+            photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
             dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
-            photoCoverage: businessesWithDeals > 0 ? (businessesWithPhotos / businessesWithDeals * 100).toFixed(1) : 0,
             totalActiveDeals,
             averageDealsPerBusiness: businessesWithDeals > 0 ? (totalActiveDeals / businessesWithDeals).toFixed(1) : 0,
             averageRating: averageRating._avg.ratingOverall || 0,
             dealsByDay: dealsByDayFormatted,
-            note: "Statistics for businesses with active deals only"
+            note: "Deal processing is currently paused - deal counts may be outdated"
         });
 
     } catch (error) {
-        logger.error({ err: error }, 'Failed to get deal-focused stats');
-        res.status(500).json({ message: 'Error fetching deal statistics' });
+        logger.error({ err: error }, 'Failed to get business stats');
+        res.status(500).json({ message: 'Error fetching business statistics' });
     }
 };
 
@@ -475,10 +478,10 @@ export const getBusinessPhotos = async (req: Request, res: Response): Promise<vo
     }
 };
 
-// Existing functional endpoints
+// Location-based search - updated to include all businesses
 export const searchBusinessesByLocation = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { lat, lng, radius = 1, withDealsOnly = 'true' } = req.query;
+        const { lat, lng, radius = 1, withDealsOnly = 'false' } = req.query;
         
         if (!lat || !lng) {
             res.status(400).json({ 
@@ -494,7 +497,7 @@ export const searchBusinessesByLocation = async (req: Request, res: Response): P
             limit: req.query.limit ? parseInt(req.query.limit as string) : 50
         });
 
-        // Filter by deals if requested (default behavior)
+        // Optional filter by deals
         const filteredBusinesses = withDealsOnly === 'true' 
             ? businesses.filter((business: any) => 
                 business.deals && business.deals.some((deal: any) => deal.isActive)
@@ -520,11 +523,11 @@ export const searchBusinessesByLocation = async (req: Request, res: Response): P
 export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
     try {
         const { category } = req.params;
-        const { isBar, isRestaurant, withDealsOnly = 'true' } = req.query;
+        const { isBar, isRestaurant, withDealsOnly = 'false' } = req.query;
         
         const whereClause: any = {};
         
-        // Add deals filter if requested (default)
+        // Optional deals filter 
         if (withDealsOnly === 'true') {
             whereClause.deals = {
                 some: { isActive: true }
@@ -647,7 +650,7 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
                 emergencyMode: costReport.emergencyMode,
                 projectedMonthly: costReport.projectedMonthly
             },
-            note: "Use /stats/deals for deal-focused statistics",
+            note: "Deal processing is currently paused - showing all processed businesses",
             generatedAt: new Date().toISOString()
         });
     } catch (error) {

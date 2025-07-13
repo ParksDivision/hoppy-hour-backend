@@ -8,7 +8,7 @@ import prisma from './prismaClient';
 // Import functional event-driven services
 import { initializeStandardizationService } from './services/standardizationService';
 import { initializeDeduplicationService, getDeduplicationStats } from './services/deduplicationService';
-import { initializeDealProcessingService } from './services/dealProcessingService';
+// import { initializeDealProcessingService } from './services/dealProcessingService'; // PAUSED
 import { initializePhotoProcessingService } from './services/photoProcessingService';
 import { subscribeToEvent } from './events/eventBus';
 
@@ -31,19 +31,20 @@ setupBullDashboard(app);
 // Initialize Event-Driven Architecture
 const initializeEventSystem = async () => {
   try {
-    logger.info('Initializing deals-first event-driven business processing system...');
+    logger.info('Initializing streamlined event-driven business processing system...');
 
-    // Initialize functional services in UPDATED order (deals before photos)
+    // UPDATED: Simplified flow - Raw → Standard → Dedupe → Photos (deal processing paused)
     logger.info('Initializing standardization service...');
     initializeStandardizationService();
     
     logger.info('Initializing deduplication service...');
     initializeDeduplicationService();
 
-    logger.info('Initializing deal processing service...');
-    initializeDealProcessingService();
+    // DEAL PROCESSING PAUSED - Will be re-enabled with more robust solution
+    // logger.info('Initializing deal processing service...');
+    // initializeDealProcessingService();
 
-    logger.info('Initializing photo processing service (deals-driven)...');
+    logger.info('Initializing photo processing service (post-deduplication)...');
     initializePhotoProcessingService();
     
     // Set up monitoring for business events using correct event types
@@ -71,20 +72,20 @@ const initializeEventSystem = async () => {
         businessId: 'businessId' in event.data ? event.data.businessId : undefined,
         action: 'action' in event.data ? event.data.action : undefined,
         confidence: 'confidence' in event.data ? event.data.confidence : undefined
-      }, 'Business successfully processed through deduplication pipeline');
+      }, 'Business processed through deduplication - proceeding to photo processing');
     });
 
-    // NEW: Monitor deal processing events
-    subscribeToEvent('business.deals.processed', async (event) => {
-      logger.info({
-        eventId: event.id,
-        businessId: 'businessId' in event.data ? event.data.businessId : undefined,
-        hasDeals: 'hasActiveDeals' in event.data ? event.data.hasActiveDeals : undefined,
-        dealsCount: 'dealsExtracted' in event.data ? event.data.dealsExtracted : undefined
-      }, 'Deal processing completed');
-    });
+    // UPDATED: Deal processing events commented out (service paused)
+    // subscribeToEvent('business.deals.processed', async (event) => {
+    //   logger.info({
+    //     eventId: event.id,
+    //     businessId: 'businessId' in event.data ? event.data.businessId : undefined,
+    //     hasDeals: 'hasActiveDeals' in event.data ? event.data.hasActiveDeals : undefined,
+    //     dealsCount: 'dealsExtracted' in event.data ? event.data.dealsExtracted : undefined
+    //   }, 'Deal processing completed');
+    // });
 
-    // Monitor photo processing events
+    // Monitor photo processing events (now triggered after deduplication)
     subscribeToEvent('business.photos.processed', async (event) => {
       logger.info({
         eventId: event.id,
@@ -95,17 +96,19 @@ const initializeEventSystem = async () => {
       }, 'Business photos successfully processed');
     });
 
-    logger.info('Deals-first event-driven system initialized successfully');
+    logger.info('Streamlined event-driven system initialized successfully');
+    logger.info('Current flow: Raw Collection → Standardization → Deduplication → Photo Processing');
+    logger.warn('Deal processing is currently PAUSED - will be re-enabled with more robust extraction');
     
     return {
       standardizationInitialized: true,
       deduplicationInitialized: true,
-      dealProcessingInitialized: true,
+      dealProcessingInitialized: false, // PAUSED
       photoProcessingInitialized: true
     };
 
   } catch (error) {
-    logger.error({ err: error }, 'Failed to initialize deals-first event-driven system');
+    logger.error({ err: error }, 'Failed to initialize streamlined event-driven system');
     throw error;
   }
 };
@@ -121,12 +124,13 @@ app.get('/health/events', async (req, res) => {
   try {
     const health = {
       eventSystem: 'operational',
-      architecture: 'deals-first-functional',
+      architecture: 'streamlined-functional',
+      currentFlow: 'Raw → Standardize → Dedupe → Photos',
       services: {
         standardization: 'operational',
         deduplication: 'operational',
-        dealProcessing: 'operational',
-        photoProcessing: 'operational (deals-driven)'
+        dealProcessing: 'PAUSED', // Will be re-enabled
+        photoProcessing: 'operational (post-deduplication)'
       },
       timestamp: new Date().toISOString(),
       uptime: process.uptime()
@@ -155,117 +159,111 @@ app.get('/admin/deduplication/stats', async (req, res) => {
   }
 });
 
-// Deal processing stats endpoint
-app.get('/admin/deal-processing/stats', async (req, res) => {
+// UPDATED: General business processing stats (not deal-focused)
+app.get('/admin/processing/stats', async (req, res) => {
   try {
     const totalBusinesses = await prisma.business.count();
     
-    const businessesWithDeals = await prisma.business.count({
+    const businessesWithPhotos = await prisma.business.count({
       where: {
-        deals: {
-          some: { isActive: true }
+        photos: {
+          some: {}
         }
       }
     });
 
-    const totalActiveDeals = await prisma.deal.count({
-      where: { isActive: true }
+    // Count by source
+    const sourceBreakdown = {
+      google: await prisma.business.count({ 
+        where: { 
+          sourceBusinesses: {
+            some: { source: 'GOOGLE' }
+          }
+        } 
+      }),
+      yelp: await prisma.business.count({ 
+        where: { 
+          sourceBusinesses: {
+            some: { source: 'YELP' }
+          }
+        } 
+      }),
+      manual: await prisma.business.count({ 
+        where: { 
+          sourceBusinesses: {
+            none: {}
+          }
+        }
+      })
+    };
+
+    const totalPhotos = await prisma.photo.count();
+    const photosWithS3 = await prisma.photo.count({
+      where: { s3Key: { not: null } }
     });
 
-    // Deals by day of week
-    const dealsByDay = await prisma.deal.groupBy({
-      by: ['dayOfWeek'],
-      where: { isActive: true },
-      _count: true
+    const averageRating = await prisma.business.aggregate({
+      _avg: { ratingOverall: true }
     });
-
-    const dealsByDayFormatted = dealsByDay.reduce((acc, item) => {
-      const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][item.dayOfWeek || 0];
-      acc[dayName] = item._count;
-      return acc;
-    }, {} as Record<string, number>);
 
     const stats = {
       totalBusinesses,
-      businessesWithDeals,
-      businessesWithoutDeals: totalBusinesses - businessesWithDeals,
-      dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
-      totalActiveDeals,
-      averageDealsPerBusiness: businessesWithDeals > 0 ? (totalActiveDeals / businessesWithDeals).toFixed(1) : 0,
-      dealsByDay: dealsByDayFormatted
+      businessesWithPhotos,
+      businessesWithoutPhotos: totalBusinesses - businessesWithPhotos,
+      photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
+      totalPhotos,
+      photosWithS3Storage: photosWithS3,
+      photosExternalOnly: totalPhotos - photosWithS3,
+      averageRating: averageRating._avg.ratingOverall || 0,
+      sources: sourceBreakdown,
+      processingFlow: 'Raw → Standardize → Dedupe → Photos',
+      dealProcessingStatus: 'PAUSED'
     };
 
     res.json(stats);
   } catch (error) {
-    logger.error({ err: error }, 'Failed to get deal processing stats');
+    logger.error({ err: error }, 'Failed to get processing stats');
     res.status(500).json({
-      error: 'Failed to retrieve deal processing statistics'
+      error: 'Failed to retrieve processing statistics'
     });
   }
 });
 
-// Photo processing stats endpoint (now for businesses with deals only)
+// Photo processing stats endpoint (now for all businesses)
 app.get('/admin/photo-processing/stats', async (req, res) => {
   try {
-    const businessesWithDeals = await prisma.business.count({
+    const totalBusinesses = await prisma.business.count();
+    
+    const businessesWithPhotos = await prisma.business.count({
       where: {
-        deals: {
-          some: { isActive: true }
+        photos: {
+          some: {}
         }
       }
     });
     
-    const businessesWithDealsAndPhotos = await prisma.business.count({
-      where: {
-        AND: [
-          {
-            deals: {
-              some: { isActive: true }
-            }
-          },
-          {
-            photos: {
-              some: {}
-            }
-          }
-        ]
-      }
-    });
-    
-    const totalPhotos = await prisma.photo.count({
-      where: {
-        business: {
-          deals: {
-            some: { isActive: true }
-          }
-        }
-      }
-    });
+    const totalPhotos = await prisma.photo.count();
     
     const photosWithS3 = await prisma.photo.count({
-      where: {
-        AND: [
-          { s3Key: { not: null } },
-          {
-            business: {
-              deals: {
-                some: { isActive: true }
-              }
-            }
-          }
-        ]
-      }
+      where: { s3Key: { not: null } }
+    });
+
+    const mainPhotos = await prisma.photo.count({
+      where: { mainPhoto: true }
     });
 
     const stats = {
-      businessesWithDeals,
-      businessesWithDealsAndPhotos,
-      businessesWithDealsButNoPhotos: businessesWithDeals - businessesWithDealsAndPhotos,
+      totalBusinesses,
+      businessesWithPhotos,
+      businessesWithoutPhotos: totalBusinesses - businessesWithPhotos,
       totalPhotos,
       photosWithS3Storage: photosWithS3,
       photosExternalOnly: totalPhotos - photosWithS3,
-      photoCoverage: businessesWithDeals > 0 ? (businessesWithDealsAndPhotos / businessesWithDeals * 100).toFixed(1) : 0,
-      note: "Statistics for businesses with active deals only"
+      mainPhotosSet: mainPhotos,
+      photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
+      averagePhotosPerBusiness: totalBusinesses > 0 ? (totalPhotos / totalBusinesses).toFixed(1) : 0,
+      trigger: 'post-deduplication',
+      note: "Photo processing now triggers after deduplication for all businesses"
     };
 
     res.json(stats);
@@ -286,8 +284,9 @@ app.post('/admin/trigger-update/:location?', async (req, res) => {
     
     res.json({
       message: `Manual update triggered for ${location}`,
-      timestamp: new Date().toISOString(),
-      note: 'Deals-first pipeline: Raw → Standard → Dedupe → Deals → Photos (only for businesses with deals)'
+      currentFlow: 'Raw Collection → Standardization → Deduplication → Photo Processing',
+      dealProcessing: 'PAUSED (will be re-enabled with robust extraction)',
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     logger.error({ err: error }, 'Failed to trigger manual update');
@@ -297,13 +296,13 @@ app.post('/admin/trigger-update/:location?', async (req, res) => {
   }
 });
 
-// Test endpoint to verify event system
+// Test endpoint to verify streamlined event system
 app.post('/admin/test-events', async (req, res) => {
   try {
     const { publishEvent } = await import('./events/eventBus');
     const { v4: uuidv4 } = await import('uuid');
     
-    // Create a test event with deals in operating hours
+    // Create a test event
     const testEvent = {
       id: uuidv4(),
       timestamp: new Date(),
@@ -314,17 +313,10 @@ app.post('/admin/test-events', async (req, res) => {
         source: 'GOOGLE' as const,
         rawData: {
           id: 'test-123',
-          displayName: { text: 'Test Happy Hour Bar' },
+          displayName: { text: 'Test Business' },
           formattedAddress: '123 Test St, Austin, TX',
           location: { latitude: 30.2672, longitude: -97.7431 },
           types: ['bar', 'restaurant'],
-          regularOpeningHours: {
-            weekdayDescriptions: [
-              'Monday: 4:00 PM – 2:00 AM, Happy Hour 4:00 PM – 7:00 PM',
-              'Tuesday: 4:00 PM – 2:00 AM, $5 beer specials 5:00 PM – 8:00 PM',
-              'Wednesday: 4:00 PM – 2:00 AM, Half price cocktails 6:00 PM – 9:00 PM'
-            ]
-          },
           photos: [
             {
               name: 'places/test-123/photos/photo-1',
@@ -344,15 +336,33 @@ app.post('/admin/test-events', async (req, res) => {
     publishEvent(testEvent);
     
     res.json({
-      message: 'Test event with deals published successfully - should trigger full pipeline',
+      message: 'Test event published successfully',
       eventId: testEvent.id,
-      expectedFlow: 'Raw → Standardize → Dedupe → Extract Deals → Process Photos (if deals found)',
+      expectedFlow: 'Raw → Standardize → Dedupe → Photos (deal processing skipped)',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     logger.error({ err: error }, 'Failed to publish test event');
     res.status(500).json({
       error: 'Failed to publish test event'
+    });
+  }
+});
+
+// Endpoint to check deal processing status
+app.get('/admin/deal-processing/status', async (req, res) => {
+  try {
+    res.json({
+      status: 'PAUSED',
+      reason: 'Regex-based extraction being replaced with more robust solution',
+      whenEnabled: 'Will be re-enabled with improved extraction logic',
+      currentDeals: await prisma.deal.count({ where: { isActive: true } }),
+      note: 'Existing deals (if any) are preserved but new extraction is disabled'
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to get deal processing status');
+    res.status(500).json({
+      error: 'Failed to retrieve deal processing status'
     });
   }
 });

@@ -1,10 +1,19 @@
+// src/services/dealProcessingService.ts
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prismaClient';
 import { logger } from '../utils/logger/logger';
 import { subscribeToEvent, publishEvent } from '../events/eventBus';
 import type { BusinessDeduplicatedEvent, DealProcessedEvent } from '../events/eventTypes';
 
-// Simple deal extraction patterns
+// =====================================================
+// DEAL PROCESSING SERVICE - CURRENTLY PAUSED
+// =====================================================
+// This service is temporarily disabled while we develop
+// a more robust deal extraction solution that can handle
+// multiple data sources and formats beyond regex patterns
+// =====================================================
+
+// Simple deal extraction patterns (PRESERVED FOR REFERENCE)
 const DEAL_PATTERNS = [
   // Happy hour times
   /happy\s+hour[:\s]*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*-\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/gi,
@@ -28,7 +37,7 @@ const DAY_PATTERNS = [
   { pattern: /sunday|sun\b/gi, day: 0 },
 ];
 
-// Pure function to normalize time
+// Pure function to normalize time (PRESERVED)
 const normalizeTime = (timeStr: string): string => {
   const time = timeStr.toLowerCase().trim();
   const match = time.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
@@ -46,7 +55,7 @@ const normalizeTime = (timeStr: string): string => {
   return `${hour.toString().padStart(2, '0')}:${minute}`;
 };
 
-// Pure function to extract deals from text
+// Pure function to extract deals from text (PRESERVED FOR FUTURE USE)
 const extractDealsFromText = (text: string): Array<{
   dayOfWeek?: number;
   startTime?: string;
@@ -105,8 +114,31 @@ const extractDealsFromText = (text: string): Array<{
   return deals;
 };
 
-// Main deal processing function
+// Main deal processing function (PRESERVED BUT NOT ACTIVE)
 const processBusinessDeals = async (businessId: string): Promise<void> => {
+  logger.warn({ businessId }, 'Deal processing is currently PAUSED - skipping extraction');
+  
+  // Publish a "no deals processed" event to complete the workflow
+  const noDealEvent: DealProcessedEvent = {
+    id: uuidv4(),
+    timestamp: new Date(),
+    source: 'deal-processing-service',
+    type: 'business.deals.processed',
+    data: {
+      businessId,
+      dealsExtracted: 0,
+      hasActiveDeals: false
+    }
+  };
+
+  // Don't publish the event since we're bypassing deal processing entirely
+  // publishEvent(noDealEvent);
+
+  return;
+
+  /* 
+  ORIGINAL LOGIC PRESERVED FOR FUTURE ENHANCEMENT:
+  
   try {
     // Get business with existing data
     const business = await prisma.business.findUnique({
@@ -229,33 +261,72 @@ const processBusinessDeals = async (businessId: string): Promise<void> => {
       businessId
     }, 'Failed to process business deals');
   }
+  */
 };
 
-// Event handler for business deduplication completion
+// Event handler for business deduplication completion (DISABLED)
 const handleBusinessDeduplicatedEvent = async (event: BusinessDeduplicatedEvent): Promise<void> => {
-  try {
-    logger.debug({
-      eventId: event.id,
-      businessId: event.data.businessId,
-      action: event.data.action
-    }, 'Processing deals for deduplicated business');
+  logger.debug({
+    eventId: event.id,
+    businessId: event.data.businessId,
+    action: event.data.action
+  }, 'Deal processing PAUSED - skipping deal extraction for business');
 
-    await processBusinessDeals(event.data.businessId);
-
-  } catch (error) {
-    logger.error({
-      err: error,
-      eventId: event.id,
-      businessId: event.data.businessId
-    }, 'Failed to process deals for business');
-  }
+  // Don't process deals - this will be handled by the new system later
+  return;
 };
 
-// Initialize deal processing service
+// UPDATED: Initialize deal processing service (DISABLED)
 export const initializeDealProcessingService = (): void => {
-  subscribeToEvent('business.deduplicated', handleBusinessDeduplicatedEvent);
-  logger.info('DealProcessingService event listeners registered');
+  // COMMENTED OUT - Deal processing is paused
+  // subscribeToEvent('business.deduplicated', handleBusinessDeduplicatedEvent);
+  
+  logger.warn('DealProcessingService is PAUSED - event listeners disabled');
+  logger.info('Deal extraction will be re-enabled with more robust solution');
+  logger.info('Current flow: Raw → Standardize → Dedupe → Photos (deals skipped)');
 };
 
-// Export for manual processing
-export { processBusinessDeals };
+// Manual processing function (PRESERVED for future testing)
+export const manualProcessBusinessDeals = async (businessId: string): Promise<void> => {
+  logger.warn({ businessId }, 'Manual deal processing requested but service is PAUSED');
+  logger.info('To process deals manually, re-enable the service and call processBusinessDeals()');
+  return;
+};
+
+// Get current deal processing status
+ const getDealProcessingStatus = () => {
+  return {
+    status: 'PAUSED',
+    reason: 'Regex-based extraction being replaced with more robust solution',
+    capabilities: [
+      'Time-based deal extraction',
+      'Day-of-week parsing', 
+      'Price pattern matching',
+      'Multi-source text processing'
+    ],
+    plannedImprovements: [
+      'AI-powered deal extraction',
+      'Multi-language support',
+      'Confidence scoring',
+      'Real-time verification',
+      'Multiple data source integration'
+    ],
+    preservedFunctions: [
+      'extractDealsFromText',
+      'normalizeTime', 
+      'processBusinessDeals',
+      'DEAL_PATTERNS',
+      'DAY_PATTERNS'
+    ]
+  };
+};
+
+// Export preserved functions for future use
+export { 
+  processBusinessDeals, 
+  extractDealsFromText,
+  normalizeTime,
+  DEAL_PATTERNS,
+  DAY_PATTERNS,
+  getDealProcessingStatus
+};

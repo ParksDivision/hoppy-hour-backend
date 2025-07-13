@@ -4,7 +4,7 @@ import prisma from '../prismaClient';
 import { logger } from '../utils/logger/logger';
 import { subscribeToEvent, publishEvent } from '../events/eventBus';
 import { cloudflareS3Service } from '../utils/cloudflareS3Service';
-import type { DealProcessedEvent, PhotoProcessedEvent } from '../events/eventTypes';
+import type { BusinessDeduplicatedEvent, PhotoProcessedEvent } from '../events/eventTypes';
 
 // Configuration
 const PHOTO_CONFIG = {
@@ -221,9 +221,8 @@ const processBusinessPhotos = async (businessId: string): Promise<void> => {
       businessId, 
       businessName: business.name,
       totalPhotos: photos.length,
-      willProcess: Math.min(photos.length, PHOTO_CONFIG.maxPhotosPerBusiness),
-      reason: 'Business has active deals'
-    }, 'Starting photo processing for business with deals');
+      willProcess: Math.min(photos.length, PHOTO_CONFIG.maxPhotosPerBusiness)
+    }, 'Starting photo processing for business');
 
     const processedPhotos: any[] = [];
     const photosToProcess = photos.slice(0, PHOTO_CONFIG.maxPhotosPerBusiness);
@@ -323,7 +322,7 @@ const processBusinessPhotos = async (businessId: string): Promise<void> => {
         photosProcessed: processedPhotos.length,
         mainPhotoSet: processedPhotos.some(p => p.mainPhoto),
         eventId: photoEvent.id
-      }, 'Successfully processed and saved photos for business with deals');
+      }, 'Successfully processed and saved photos for business');
     }
 
   } catch (error) {
@@ -334,24 +333,14 @@ const processBusinessPhotos = async (businessId: string): Promise<void> => {
   }
 };
 
-// UPDATED: Event handler for deal processing completion (only processes photos if deals found)
-const handleDealProcessedEvent = async (event: DealProcessedEvent): Promise<void> => {
+// UPDATED: Event handler for business deduplication completion (directly after dedup)
+const handleBusinessDeduplicatedEvent = async (event: BusinessDeduplicatedEvent): Promise<void> => {
   try {
-    // Only process photos if business has active deals
-    if (!event.data.hasActiveDeals) {
-      logger.debug({
-        eventId: event.id,
-        businessId: event.data.businessId,
-        dealsExtracted: event.data.dealsExtracted
-      }, 'Skipping photo processing - no active deals found');
-      return;
-    }
-
     logger.info({
       eventId: event.id,
       businessId: event.data.businessId,
-      dealsExtracted: event.data.dealsExtracted
-    }, 'Processing photos for business with active deals');
+      action: event.data.action
+    }, 'Processing photos for deduplicated business');
 
     await processBusinessPhotos(event.data.businessId);
 
@@ -360,14 +349,14 @@ const handleDealProcessedEvent = async (event: DealProcessedEvent): Promise<void
       err: error,
       eventId: event.id,
       businessId: event.data.businessId
-    }, 'Failed to process photos for business with deals');
+    }, 'Failed to process photos for business');
   }
 };
 
-// Initialize photo processing service - UPDATED to listen for deal events
+// UPDATED: Initialize photo processing service - now listens for deduplication events
 export const initializePhotoProcessingService = (): void => {
-  subscribeToEvent('business.deals.processed', handleDealProcessedEvent);
-  logger.info('PhotoProcessingService listening for businesses with deals');
+  subscribeToEvent('business.deduplicated', handleBusinessDeduplicatedEvent);
+  logger.info('PhotoProcessingService listening for deduplicated businesses');
 };
 
 // Export for manual processing and testing
