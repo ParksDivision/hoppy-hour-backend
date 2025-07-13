@@ -14,7 +14,8 @@
     "db:reset": "npx prisma migrate reset",
     "migrate:data": "ts-node scripts/migrateExistingData.ts",
     "cost:report": "ts-node scripts/costReport.ts",
-    "cost:reset": "ts-node scripts/resetEmergencyMode.ts"
+    "cost:reset": "ts-node scripts/resetEmergencyMode.ts",
+    "seed": "ts-node scripts/seedMockDealsData.ts"
   },
   "keywords": [
     "happy-hour",
