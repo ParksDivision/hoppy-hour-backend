@@ -58,7 +58,7 @@ export const getManyBusinesses = async (req: Request, res: Response): Promise<vo
             include: {
                 photos: {
                     orderBy: { mainPhoto: 'desc' }, // Main photos first
-                    take: 5 // Limit photos per business for performance
+                    take: 10 // Include up to 10 photos as configured
                 },
                 deals: {
                     where: { isActive: true },
@@ -82,14 +82,31 @@ export const getManyBusinesses = async (req: Request, res: Response): Promise<vo
             return;
         }
 
-        // Add computed fields for convenience
-        const enrichedBusinesses = businesses.map(business => ({
-            ...business,
-            hasPhotos: business.photos.length > 0,
-            hasDeals: business.deals.length > 0,
-            photoCount: business.photos.length,
-            activeDealsCount: business.deals.length
-        }));
+        // FIXED: Add CDN URLs to photos for frontend consumption
+        const enrichedBusinesses = businesses.map(business => {
+            const cdnBaseUrl = process.env.CLOUDFLARE_CDN_BASE_URL;
+            
+            const photosWithCDN = business.photos.map(photo => ({
+                ...photo,
+                cdnUrls: {
+                    original: photo.s3Key && cdnBaseUrl ? `${cdnBaseUrl}/${photo.s3Key.replace(/^\/+/, '')}` : null,
+                    thumbnail: photo.s3KeyThumbnail && cdnBaseUrl ? `${cdnBaseUrl}/${photo.s3KeyThumbnail.replace(/^\/+/, '')}` : null,
+                    small: photo.s3KeySmall && cdnBaseUrl ? `${cdnBaseUrl}/${photo.s3KeySmall.replace(/^\/+/, '')}` : null,
+                    medium: photo.s3KeyMedium && cdnBaseUrl ? `${cdnBaseUrl}/${photo.s3KeyMedium.replace(/^\/+/, '')}` : null,
+                    large: photo.s3KeyLarge && cdnBaseUrl ? `${cdnBaseUrl}/${photo.s3KeyLarge.replace(/^\/+/, '')}` : null
+                },
+                fallbackUrl: photo.url
+            }));
+
+            return {
+                ...business,
+                photos: photosWithCDN,
+                hasPhotos: business.photos.length > 0,
+                hasDeals: business.deals.length > 0,
+                photoCount: business.photos.length,
+                activeDealsCount: business.deals.length
+            };
+        });
 
         res.json({
             businesses: enrichedBusinesses,
@@ -397,7 +414,6 @@ export const deleteManyBusinesses = async (req: Request, res: Response): Promise
 export const getBusinessPhotos = async (req: Request, res: Response): Promise<void> => {
     try {
         const { businessId } = req.params;
-        const { useCDN = 'true' } = req.query;
         
         const photos = await prisma.photo.findMany({
             where: { businessId },
@@ -414,64 +430,33 @@ export const getBusinessPhotos = async (req: Request, res: Response): Promise<vo
                 s3KeySmall: true,
                 s3KeyMedium: true,
                 s3KeyLarge: true
-            }
+            },
+            orderBy: { mainPhoto: 'desc' } // Main photos first
         });
 
-        // If Cloudflare CDN is enabled and requested, generate CDN URLs
-        if (useCDN === 'true' && process.env.CLOUDFLARE_CDN_ENABLED === 'true') {
-            const photosWithCDNUrls = photos.map(photo => {
-                const cdnBaseUrl = process.env.CLOUDFLARE_CDN_BASE_URL;
-                
-                const generateCDNUrl = (s3Key: string | null) => 
-                    s3Key && cdnBaseUrl ? `${cdnBaseUrl}/${s3Key.replace(/^\/+/, '')}` : null;
+        // FIXED: Always prioritize Cloudflare CDN URLs as designed
+        const photosWithCDNUrls = photos.map(photo => {
+            const cdnBaseUrl = process.env.CLOUDFLARE_CDN_BASE_URL;
+            
+            const generateCDNUrl = (s3Key: string | null) => 
+                s3Key && cdnBaseUrl ? `${cdnBaseUrl}/${s3Key.replace(/^\/+/, '')}` : null;
 
-                return {
-                    ...photo,
-                    cdnUrls: {
-                        original: generateCDNUrl(photo.s3Key),
-                        thumbnail: generateCDNUrl(photo.s3KeyThumbnail),
-                        small: generateCDNUrl(photo.s3KeySmall),
-                        medium: generateCDNUrl(photo.s3KeyMedium),
-                        large: generateCDNUrl(photo.s3KeyLarge)
-                    }
-                };
-            });
+            return {
+                ...photo,
+                // Primary CDN URLs (what frontend should use)
+                cdnUrls: {
+                    original: generateCDNUrl(photo.s3Key),
+                    thumbnail: generateCDNUrl(photo.s3KeyThumbnail),
+                    small: generateCDNUrl(photo.s3KeySmall),
+                    medium: generateCDNUrl(photo.s3KeyMedium),
+                    large: generateCDNUrl(photo.s3KeyLarge)
+                },
+                // Fallback external URL if S3/CDN not available
+                fallbackUrl: photo.url
+            };
+        });
 
-            res.json(photosWithCDNUrls);
-            return;
-        }
-
-        // Fallback: Get signed URLs from S3 (with cost control)
-        const photosWithUrls = await Promise.all(photos.map(async (photo) => {
-            try {
-                const urls = {
-                    original: photo.s3Key ? await cloudflareS3Service.getImageUrl(photo.s3Key, false) : null,
-                    thumbnail: photo.s3KeyThumbnail ? await cloudflareS3Service.getImageUrl(photo.s3KeyThumbnail, false) : null,
-                    small: photo.s3KeySmall ? await cloudflareS3Service.getImageUrl(photo.s3KeySmall, false) : null,
-                    medium: photo.s3KeyMedium ? await cloudflareS3Service.getImageUrl(photo.s3KeyMedium, false) : null,
-                    large: photo.s3KeyLarge ? await cloudflareS3Service.getImageUrl(photo.s3KeyLarge, false) : null
-                };
-
-                return {
-                    ...photo,
-                    urls
-                };
-            } catch (error) {
-                logger.error(`Failed to generate URLs for photo ${photo.id}`, { error });
-                return {
-                    ...photo,
-                    urls: {
-                        original: null,
-                        thumbnail: null,
-                        small: null,
-                        medium: null,
-                        large: null
-                    }
-                };
-            }
-        }));
-
-        res.json(photosWithUrls);
+        res.json(photosWithCDNUrls);
     } catch (error) {
         console.error('Error fetching business photos:', error);
         res.status(500).json({ message: 'Error fetching business photos' });

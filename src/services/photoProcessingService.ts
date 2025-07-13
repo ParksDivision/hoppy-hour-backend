@@ -8,7 +8,7 @@ import type { BusinessDeduplicatedEvent, PhotoProcessedEvent } from '../events/e
 
 // Configuration
 const PHOTO_CONFIG = {
-  maxPhotosPerBusiness: 5,
+  maxPhotosPerBusiness: 10, // FIXED: Updated to 10 as requested
   maxImageSize: 10 * 1024 * 1024, // 10MB
   downloadTimeout: 15000, // 15 seconds
   delayBetweenPhotos: 500, // 500ms between photo downloads
@@ -225,7 +225,16 @@ const processBusinessPhotos = async (businessId: string): Promise<void> => {
     }, 'Starting photo processing for business');
 
     const processedPhotos: any[] = [];
-    const photosToProcess = photos.slice(0, PHOTO_CONFIG.maxPhotosPerBusiness);
+    
+    // FIXED: Sort photos to prioritize featured/main photos
+    const sortedPhotos = photos.sort((a: any, b: any) => {
+      // Prioritize photos with higher resolution (likely better quality)
+      const aArea = (a.widthPx || 0) * (a.heightPx || 0);
+      const bArea = (b.widthPx || 0) * (b.heightPx || 0);
+      return bArea - aArea; // Highest resolution first
+    });
+    
+    const photosToProcess = sortedPhotos.slice(0, PHOTO_CONFIG.maxPhotosPerBusiness);
 
     // Process photos sequentially to respect rate limits
     for (let index = 0; index < photosToProcess.length; index++) {
