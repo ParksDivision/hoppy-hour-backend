@@ -7,6 +7,7 @@ import { logger } from './utils/logger/logger';
 // Import functional event-driven services
 import { initializeStandardizationService } from './services/standardizationService';
 import { initializeDeduplicationService, getDeduplicationStats } from './services/deduplicationService';
+import { initializeDealProcessingService } from './services/dealProcessingService';
 import { subscribeToEvent } from './events/eventBus';
 
 const app = express()
@@ -36,6 +37,9 @@ const initializeEventSystem = async () => {
     
     logger.info('Initializing deduplication service...');
     initializeDeduplicationService();
+
+    logger.info('Initializing deal processing service...');
+    initializeDealProcessingService();
     
     // Set up monitoring for business events using correct event types
     subscribeToEvent('business.raw.collected', async (event) => {
@@ -65,11 +69,14 @@ const initializeEventSystem = async () => {
       }, 'Business successfully processed through deduplication pipeline');
     });
 
+    
+
     logger.info('Functional event-driven system initialized successfully');
     
     return {
       standardizationInitialized: true,
-      deduplicationInitialized: true
+      deduplicationInitialized: true,
+      dealProcessingInitialized: true
     };
 
   } catch (error) {
@@ -92,7 +99,8 @@ app.get('/health/events', async (req, res) => {
       architecture: 'functional',
       services: {
         standardization: 'operational',
-        deduplication: 'operational'
+        deduplication: 'operational',
+        dealProcessing: 'operational'
       },
       timestamp: new Date().toISOString(),
       uptime: process.uptime()

@@ -66,7 +66,7 @@ const createPlacesRequest = (endpoint: string, params: SearchParams) => {
 // API Functions
 export const fetchNearbyBusinesses = async (location: Location) => {
   const logContext = { location: location.name };
-  let businesses = [];
+  let businesses: any[] = [];
   let pagetoken: string | undefined;
 
   logger.debug(logContext, 'Starting nearby business search');

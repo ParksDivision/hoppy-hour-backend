@@ -100,16 +100,18 @@ class CloudflareS3Service {
       where: { monthYear }
     });
 
-    if (!budget) {
-      budget = await prisma.costBudget.create({
-        data: {
-          monthYear,
-          totalBudget: this.monthlyBudget,
-          currentSpent: 0,
-          isActive: true
-        }
-      });
-    }
+   if (!budget) {
+  budget = await prisma.costBudget.upsert({
+    where: { monthYear },
+    create: {
+      monthYear,
+      totalBudget: this.monthlyBudget,
+      currentSpent: 0,
+      isActive: true
+    },
+    update: {} // Don't change existing budget
+  });
+}
 
     return budget;
   }

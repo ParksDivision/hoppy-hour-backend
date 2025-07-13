@@ -33,7 +33,7 @@ cleanupJob.start();
 // start server
 startServer();
 
-// oneTimeGoogleDataUpdate(AUSTIN_LOCATIONS)
+oneTimeGoogleDataUpdate(AUSTIN_LOCATIONS)
 
 // initializeScheduler().catch(error => {
 //     console.error('Failed to initialize schedulers:', error);

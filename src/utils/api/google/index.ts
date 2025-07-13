@@ -1,14 +1,16 @@
-import prisma from '../../../prismaClient';
+// src/utils/api/google/index.ts
+import { v4 as uuidv4 } from 'uuid';
+import { publishEvent } from '../../../events/eventBus';
 import { googlePlacesLogger as logger } from '../../../utils/logger/logger';
 import { 
   fetchNearbyBusinesses,
   type Location,
 } from './api';
 import { processPlaceData } from './utilities';
-import { cloudflareS3Service } from '../../../utils/cloudflareS3Service'; // Updated import
+import { cloudflareS3Service } from '../../../utils/cloudflareS3Service';
 import axios from 'axios';
 
-// Enhanced photo processing with cost control
+// Enhanced photo processing with cost control (kept for future use)
 async function processAndUploadPhoto(photo: any, businessId: string) {
   try {
     // Construct the correct Google Places photo URL
@@ -125,11 +127,12 @@ async function processAndUploadPhoto(photo: any, businessId: string) {
   }
 }
 
+// UPDATED: Event-driven version that publishes events instead of direct DB operations
 export const updateBusinessesForLocation = async (location: Location) => {
   const logContext = { location: location.name };
   
   try {
-    logger.info(logContext, 'Starting Google Places update for location');
+    logger.info(logContext, 'Starting Google Places update via event system');
     
     // Get cost report before starting
     const costReport = await cloudflareS3Service.getCostReport();
@@ -139,166 +142,67 @@ export const updateBusinessesForLocation = async (location: Location) => {
       remainingBudget: costReport.remainingBudget,
       emergencyMode: costReport.emergencyMode
     });
-
-    // If in emergency mode, skip photo processing
-    if (costReport.emergencyMode) {
-      logger.warn('Emergency mode active - skipping photo processing', logContext);
-    }
     
     const businesses = await fetchNearbyBusinesses(location);
     logger.info({ ...logContext, count: businesses.length }, 'Retrieved businesses');
     
-    let successCount = 0;
+    let publishedCount = 0;
     let errorCount = 0;
-    let photoProcessingSkipped = 0;
-    
-    for (let index = 0; index < businesses.length; index++) {
-      const business = businesses[index];
+
+    // Explicitly type business as any or the correct type if known
+    for (const business of businesses as any[]) {
       try {
-        await prisma.$transaction(async (tx) => {
-          // Process and upsert business info
-          const businessData = processPlaceData(business);
-          const upsertedBusiness = await tx.business.upsert({
-            where: { placeId: business.id },
-            create: { ...businessData, createdOn: new Date() },
-            update: { ...businessData, updatedOn: new Date() }
-          });
-
-          // Process photos if they exist and we're not in emergency mode
-          if (business.photos?.length && !costReport.emergencyMode) {
-            try {
-              // Limit photos per business to control costs (max 3 photos)
-              const photosToProcess = business.photos.slice(0, 3);
-              
-              logger.debug('Processing photos for business', {
-                businessId: upsertedBusiness.id,
-                businessName: business.name || business.displayName?.text,
-                totalPhotos: business.photos.length,
-                processingPhotos: photosToProcess.length
-              });
-
-              // Process photos sequentially to respect rate limits
-              const processedPhotos: any[] = [];
-              
-              for (let photoIndex = 0; photoIndex < photosToProcess.length; photoIndex++) {
-                const photo = photosToProcess[photoIndex];
-                try {
-                  const processedPhoto = await processAndUploadPhoto(photo, upsertedBusiness.id);
-                  
-                  if (processedPhoto) {
-                    processedPhotos.push({
-                      ...processedPhoto,
-                      mainPhoto: photoIndex === 0 // First photo is main photo
-                    });
-                  }
-
-                  // Small delay between photos to be gentle on rate limits
-                  if (photoIndex < photosToProcess.length - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 200));
-                  }
-                  
-                } catch (photoError) {
-                  logger.error('Failed to process individual photo', {
-                    error: photoError,
-                    businessId: upsertedBusiness.id,
-                    photoIndex
-                  });
-                  // Continue with next photo
-                }
-              }
-
-              // Create photo records in database
-              if (processedPhotos.length > 0) {
-                await tx.photo.createMany({
-                  data: processedPhotos.map(photo => ({
-                    ...photo,
-                    businessId: upsertedBusiness.id,
-                    createdOn: new Date(),
-                    lastFetched: new Date()
-                  })),
-                  skipDuplicates: true
-                });
-
-                logger.debug('Photos saved to database', {
-                  businessId: upsertedBusiness.id,
-                  savedPhotos: processedPhotos.length
-                });
-              }
-
-            } catch (photoError) {
-              logger.error('Failed to process photos for business', {
-                error: photoError,
-                businessId: upsertedBusiness.id,
-                businessName: business.name || business.displayName?.text
-              });
-              // Continue with other businesses even if photos fail
-            }
-          } else if (business.photos?.length) {
-            photoProcessingSkipped++;
-            logger.debug('Photo processing skipped', {
-              businessId: upsertedBusiness.id,
-              reason: costReport.emergencyMode ? 'emergency_mode' : 'no_photos',
-              photoCount: business.photos.length
-            });
+        // Create raw collected event
+        const rawEvent = {
+          id: uuidv4(),
+          timestamp: new Date(),
+          source: 'google-places-api',
+          type: 'business.raw.collected' as const,
+          data: {
+            sourceId: business.id,
+            source: 'GOOGLE' as const,
+            rawData: business,
+            location
           }
-        });
- 
-        successCount++;
+        };
+
+        // Publish to event system (will trigger standardization -> deduplication)
+        publishEvent(rawEvent);
+        publishedCount++;
         
-        // Log progress every 10 businesses
-        if ((index + 1) % 10 === 0) {
-          logger.debug('Progress update', {
-            ...logContext,
-            processed: index + 1,
-            total: businesses.length,
-            successCount,
-            errorCount
-          });
-        }
+        logger.debug({
+          businessId: business.id,
+          businessName: business.displayName?.text || 'Unknown'
+        }, 'Published raw business event');
 
       } catch (error) {
         errorCount++;
-        logger.error('Failed to process business', {
-          error,
-          ...logContext,
+        logger.error({
+          err: error,
           businessId: business.id,
-          businessName: business.name || business.displayName?.text
-        });
-        continue;
+          businessName: business.displayName?.text || 'Unknown'
+        }, 'Failed to publish business event');
       }
     }
 
     // Get final cost report
     const finalCostReport = await cloudflareS3Service.getCostReport();
     
-    logger.info('Completed location update', {
+    logger.info('Completed Google Places update via events', {
       ...logContext,
-      successCount,
+      totalFetched: businesses.length,
+      publishedCount,
       errorCount,
-      totalCount: businesses.length,
-      photoProcessingSkipped,
       costInfo: {
         initialCost: costReport.currentMonth.total,
         finalCost: finalCostReport.currentMonth.total,
-        costIncrease: finalCostReport.currentMonth.total - costReport.currentMonth.total,
         remainingBudget: finalCostReport.remainingBudget,
         emergencyMode: finalCostReport.emergencyMode
       }
     });
-
-    // Warn if emergency mode was triggered during processing
-    if (!costReport.emergencyMode && finalCostReport.emergencyMode) {
-      logger.warn('Emergency mode triggered during location update', {
-        location: location.name,
-        finalCost: finalCostReport.currentMonth.total
-      });
-    }
-
+    
   } catch (error) {
-    logger.error('Failed to update location', {
-      err: error,
-      ...logContext
-    });
+    logger.error({ err: error, ...logContext }, 'Failed Google Places update');
     throw error;
   }
 };
