@@ -124,4 +124,6 @@ local/
 
 # Docker
 .dockerignore
-docker-compose.override.yml
+docker-compose.override.ymldeployment-config/
+.env*
+*.env
