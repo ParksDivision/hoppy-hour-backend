@@ -14,7 +14,7 @@ import {
     searchBusinesses 
 } from '../repositories/businessRepository';
 import prisma from '../prismaClient';
-import { cloudflareS3Service } from '../utils/cloudflareS3Service'; // Updated import
+import { cloudflareS3Service } from '../utils/cloudflareS3Service';
 import { logger } from '../utils/logger/logger';
 
 export const getOneBusiness = async (req: Request, res: Response): Promise<void> => {
@@ -36,35 +36,265 @@ export const getOneBusiness = async (req: Request, res: Response): Promise<void>
     }
 };
 
+// UPDATED: Now filters by deals by default
 export const getManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
-        // Support both query parameters and body for search criteria
-        const criteria = {
-            name: req.query.name as string,
-            latitude: req.query.lat ? parseFloat(req.query.lat as string) : undefined,
-            longitude: req.query.lng ? parseFloat(req.query.lng as string) : undefined,
-            radiusKm: req.query.radius ? parseFloat(req.query.radius as string) : undefined,
-            limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
-            ...req.body
-        };
+        const { includeWithoutDeals = 'false', limit, offset } = req.query;
+        
+        // Default behavior: only return businesses with active deals
+        const whereClause = includeWithoutDeals === 'true' 
+            ? {} // Return all businesses
+            : {
+                deals: {
+                    some: {
+                        isActive: true
+                    }
+                }
+            };
 
-        // Use functional repository for search
-        const businesses = Object.keys(criteria).some(key => criteria[key as keyof typeof criteria] !== undefined)
-            ? await searchBusinesses(criteria)
-            : await getManyBusinessService(req.body);
+        const businesses = await prisma.business.findMany({
+            where: whereClause,
+            include: {
+                photos: {
+                    orderBy: { mainPhoto: 'desc' }, // Main photos first
+                },
+                deals: {
+                    where: { isActive: true },
+                    orderBy: { startTime: 'asc' }
+                }
+            },
+            orderBy: [
+                { ratingOverall: 'desc' },
+                { name: 'asc' }
+            ],
+            take: limit ? parseInt(limit as string) : undefined,
+            skip: offset ? parseInt(offset as string) : undefined
+        });
 
         if (!businesses || businesses.length === 0) {
-            res.status(404).json({ message: "Businesses not found." });
+            res.status(404).json({ 
+                message: includeWithoutDeals === 'true' 
+                    ? "No businesses found." 
+                    : "No businesses with active deals found." 
+            });
             return;
         }
-        
-        res.json(businesses);
+
+        res.json({
+            businesses,
+            count: businesses.length,
+            note: includeWithoutDeals === 'true' 
+                ? "Showing all businesses" 
+                : "Showing only businesses with active deals (default behavior)"
+        });
+
     } catch (error) {
         console.error("Error fetching businesses:", error);
         res.status(500).json({ message: "Error fetching businesses." });
     }
 };
 
+// NEW: Primary endpoint for frontend - businesses with current active deals
+export const getBusinessesWithActiveDeals = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const currentDay = new Date().getDay(); // 0 = Sunday, 1 = Monday, etc.
+        const currentTime = new Date().toTimeString().slice(0, 5); // "HH:MM" format
+        const { limit = 50, offset = 0 } = req.query;
+        
+        const businesses = await prisma.business.findMany({
+            where: {
+                deals: {
+                    some: {
+                        isActive: true,
+                        OR: [
+                            // Deals for current day with time ranges
+                            {
+                                dayOfWeek: currentDay,
+                                startTime: { lte: currentTime },
+                                endTime: { gte: currentTime }
+                            },
+                            // All-day deals for current day
+                            {
+                                dayOfWeek: currentDay,
+                                startTime: null
+                            },
+                            // Deals without specific day (all-week deals)
+                            {
+                                dayOfWeek: null
+                            }
+                        ]
+                    }
+                }
+            },
+            include: {
+                photos: {
+                    orderBy: { mainPhoto: 'desc' },
+                    take: 5 // Limit photos per business
+                },
+                deals: {
+                    where: {
+                        isActive: true,
+                        OR: [
+                            { dayOfWeek: currentDay },
+                            { dayOfWeek: null } // All-day deals
+                        ]
+                    },
+                    orderBy: { startTime: 'asc' }
+                }
+            },
+            orderBy: [
+                { ratingOverall: 'desc' },
+                { name: 'asc' }
+            ],
+            take: parseInt(limit as string),
+            skip: parseInt(offset as string)
+        });
+
+        // Add computed fields for frontend
+        const enrichedBusinesses = businesses.map(business => {
+            const currentDeals = business.deals.filter(deal => {
+                if (!deal.startTime || !deal.endTime) return true; // All-day deals
+                return deal.startTime <= currentTime && deal.endTime >= currentTime;
+            });
+
+            const nextDealTime = getNextDealTime(business.deals, currentDay, currentTime);
+
+            return {
+                ...business,
+                currentDeals,
+                hasCurrentDeals: currentDeals.length > 0,
+                nextDealTime,
+                totalDeals: business.deals.length
+            };
+        });
+
+        res.json({
+            businesses: enrichedBusinesses,
+            count: enrichedBusinesses.length,
+            currentDay: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][currentDay],
+            currentTime,
+            timestamp: new Date().toISOString()
+        });
+
+    } catch (error) {
+        logger.error({ err: error }, 'Failed to get businesses with active deals');
+        res.status(500).json({ message: "Error fetching businesses with active deals." });
+    }
+};
+
+// Helper function to find next deal time
+const getNextDealTime = (deals: any[], currentDay: number, currentTime: string): string | null => {
+    const allDeals = deals.filter(deal => deal.startTime);
+    
+    // Today's future deals
+    const todayDeals = allDeals
+        .filter(deal => deal.dayOfWeek === currentDay && deal.startTime > currentTime)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    
+    if (todayDeals.length > 0) {
+        return `Today at ${formatTime(todayDeals[0].startTime)}`;
+    }
+
+    // Tomorrow's deals
+    const tomorrowDay = (currentDay + 1) % 7;
+    const tomorrowDeals = allDeals
+        .filter(deal => deal.dayOfWeek === tomorrowDay)
+        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    
+    if (tomorrowDeals.length > 0) {
+        return `Tomorrow at ${formatTime(tomorrowDeals[0].startTime)}`;
+    }
+
+    return null;
+};
+
+const formatTime = (time: string): string => {
+    const [hours, minutes] = time.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+};
+
+// NEW: Deal-focused business statistics
+export const getBusinessStatsForDeals = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const totalBusinesses = await prisma.business.count();
+        
+        const businessesWithDeals = await prisma.business.count({
+            where: {
+                deals: {
+                    some: { isActive: true }
+                }
+            }
+        });
+
+        const businessesWithPhotos = await prisma.business.count({
+            where: {
+                AND: [
+                    {
+                        photos: { some: {} }
+                    },
+                    {
+                        deals: { some: { isActive: true } }
+                    }
+                ]
+            }
+        });
+
+        const totalActiveDeals = await prisma.deal.count({
+            where: { isActive: true }
+        });
+
+        // Deals by day of week
+        const dealsByDay = await prisma.deal.groupBy({
+            by: ['dayOfWeek'],
+            where: { isActive: true },
+            _count: true
+        });
+
+        const dealsByDayFormatted = dealsByDay.reduce((acc, item) => {
+            if (item.dayOfWeek !== null) {
+                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][item.dayOfWeek];
+                acc[dayName] = item._count;
+            } else {
+                acc['All Week'] = item._count;
+            }
+            return acc;
+        }, {} as Record<string, number>);
+
+        const averageRating = await prisma.business.aggregate({
+            where: {
+                deals: {
+                    some: { isActive: true }
+                }
+            },
+            _avg: {
+                ratingOverall: true
+            }
+        });
+
+        res.json({
+            totalBusinesses,
+            businessesWithDeals,
+            businessesWithoutDeals: totalBusinesses - businessesWithDeals,
+            businessesWithPhotos,
+            dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
+            photoCoverage: businessesWithDeals > 0 ? (businessesWithPhotos / businessesWithDeals * 100).toFixed(1) : 0,
+            totalActiveDeals,
+            averageDealsPerBusiness: businessesWithDeals > 0 ? (totalActiveDeals / businessesWithDeals).toFixed(1) : 0,
+            averageRating: averageRating._avg.ratingOverall || 0,
+            dealsByDay: dealsByDayFormatted,
+            note: "Statistics for businesses with active deals only"
+        });
+
+    } catch (error) {
+        logger.error({ err: error }, 'Failed to get deal-focused stats');
+        res.status(500).json({ message: 'Error fetching deal statistics' });
+    }
+};
+
+// Existing endpoints remain the same...
 export const createBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const business = await createBusinessService(req.body);
@@ -245,10 +475,10 @@ export const getBusinessPhotos = async (req: Request, res: Response): Promise<vo
     }
 };
 
-// New functional endpoints leveraging the repository layer
+// Existing functional endpoints
 export const searchBusinessesByLocation = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { lat, lng, radius = 1 } = req.query;
+        const { lat, lng, radius = 1, withDealsOnly = 'true' } = req.query;
         
         if (!lat || !lng) {
             res.status(400).json({ 
@@ -264,13 +494,21 @@ export const searchBusinessesByLocation = async (req: Request, res: Response): P
             limit: req.query.limit ? parseInt(req.query.limit as string) : 50
         });
 
+        // Filter by deals if requested (default behavior)
+        const filteredBusinesses = withDealsOnly === 'true' 
+            ? businesses.filter((business: any) => 
+                business.deals && business.deals.some((deal: any) => deal.isActive)
+              )
+            : businesses;
+
         res.json({
-            results: businesses,
-            count: businesses.length,
+            results: filteredBusinesses,
+            count: filteredBusinesses.length,
             searchCriteria: {
                 latitude: parseFloat(lat as string),
                 longitude: parseFloat(lng as string),
-                radiusKm: parseFloat(radius as string)
+                radiusKm: parseFloat(radius as string),
+                withDealsOnly: withDealsOnly === 'true'
             }
         });
     } catch (error) {
@@ -282,31 +520,51 @@ export const searchBusinessesByLocation = async (req: Request, res: Response): P
 export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
     try {
         const { category } = req.params;
-        const { isBar, isRestaurant } = req.query;
+        const { isBar, isRestaurant, withDealsOnly = 'true' } = req.query;
         
-        // This would need to be implemented in the repository
-        // For now, using the existing service
-        const businesses = await getManyBusinessService({});
+        const whereClause: any = {};
         
-        // Filter by category and type
+        // Add deals filter if requested (default)
+        if (withDealsOnly === 'true') {
+            whereClause.deals = {
+                some: { isActive: true }
+            };
+        }
+
+        // Add type filters
+        if (isBar === 'true') whereClause.isBar = true;
+        if (isRestaurant === 'true') whereClause.isRestaurant = true;
+
+        const businesses = await prisma.business.findMany({
+            where: whereClause,
+            include: {
+                photos: {
+                    where: { mainPhoto: true },
+                    take: 1
+                },
+                deals: {
+                    where: { isActive: true },
+                    orderBy: { startTime: 'asc' }
+                }
+            }
+        });
+
+        // Filter by category in business categories
         const filtered = businesses.filter((business: any) => {
-            const categoryMatch = business.categories?.some((cat: string) => 
+            return business.categories?.some((cat: string) => 
                 cat.toLowerCase().includes(category.toLowerCase())
             );
-            
-            const typeMatch = 
-                (isBar === 'true' && business.isBar) ||
-                (isRestaurant === 'true' && business.isRestaurant) ||
-                (!isBar && !isRestaurant);
-            
-            return categoryMatch && typeMatch;
         });
 
         res.json({
             results: filtered,
             count: filtered.length,
             category,
-            filters: { isBar, isRestaurant }
+            filters: { 
+                isBar, 
+                isRestaurant, 
+                withDealsOnly: withDealsOnly === 'true'
+            }
         });
     } catch (error) {
         console.error('Error fetching businesses by category:', error);
@@ -320,6 +578,15 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
         const totalBusinesses = await prisma.business.count();
         const totalBars = await prisma.business.count({ where: { isBar: true } });
         const totalRestaurants = await prisma.business.count({ where: { isRestaurant: true } });
+        
+        const businessesWithDeals = await prisma.business.count({
+            where: {
+                deals: {
+                    some: { isActive: true }
+                }
+            }
+        });
+
         const businessesWithPhotos = await prisma.business.count({
             where: {
                 photos: {
@@ -367,8 +634,11 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
             breakdown: {
                 bars: totalBars,
                 restaurants: totalRestaurants,
+                withDeals: businessesWithDeals,
                 withPhotos: businessesWithPhotos
             },
+            dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
+            photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
             averageRating: averageRating._avg.ratingOverall || 0,
             sources: sourceBreakdown,
             costInfo: {
@@ -377,6 +647,7 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
                 emergencyMode: costReport.emergencyMode,
                 projectedMonthly: costReport.projectedMonthly
             },
+            note: "Use /stats/deals for deal-focused statistics",
             generatedAt: new Date().toISOString()
         });
     } catch (error) {

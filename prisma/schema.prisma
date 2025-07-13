@@ -52,6 +52,8 @@ model Business {
   @@index([normalizedPhone])
   @@index([name])
   @@index([isBar, isRestaurant])
+  @@index([ratingOverall])
+  @@index([ratingOverall, name])
   @@map("businesses")
 }
 
@@ -100,6 +102,9 @@ model Deal {
 
   @@index([isActive, dayOfWeek])
   @@index([businessId, isActive])
+  @@index([isActive, dayOfWeek, startTime])
+  @@index([dayOfWeek, isActive])
+  @@index([isActive])
   @@map("deals")
 }
 
@@ -133,6 +138,7 @@ model Photo {
   @@unique([businessId, sourceId])
   @@index([businessId])
   @@index([mainPhoto])
+  @@index([businessId, mainPhoto])
   @@map("photos")
 }
 

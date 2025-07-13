@@ -1,7 +1,8 @@
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prismaClient';
 import { logger } from '../utils/logger/logger';
-import { subscribeToEvent } from '../events/eventBus';
-import type { BusinessDeduplicatedEvent } from '../events/eventTypes';
+import { subscribeToEvent, publishEvent } from '../events/eventBus';
+import type { BusinessDeduplicatedEvent, DealProcessedEvent } from '../events/eventTypes';
 
 // Simple deal extraction patterns
 const DEAL_PATTERNS = [
@@ -153,7 +154,7 @@ const processBusinessDeals = async (businessId: string): Promise<void> => {
       });
     });
 
-    // Save deals to database
+    // Save deals to database and publish appropriate event
     if (allDeals.length > 0) {
       // Delete existing deals for this business
       await prisma.deal.deleteMany({
@@ -177,16 +178,49 @@ const processBusinessDeals = async (businessId: string): Promise<void> => {
         }))
       });
 
+      // Publish deal processed event with deals found
+      const dealEvent: DealProcessedEvent = {
+        id: uuidv4(),
+        timestamp: new Date(),
+        source: 'deal-processing-service',
+        type: 'business.deals.processed',
+        data: {
+          businessId,
+          dealsExtracted: allDeals.length,
+          hasActiveDeals: true
+        }
+      };
+
+      publishEvent(dealEvent);
+
       logger.info({
         businessId,
         businessName: business.name,
-        dealsExtracted: allDeals.length
-      }, 'Successfully extracted and saved deals');
+        dealsExtracted: allDeals.length,
+        eventId: dealEvent.id
+      }, 'Successfully extracted and saved deals - triggering photo processing');
+
     } else {
+      // Publish event even with no deals (for analytics and workflow completion)
+      const noDealEvent: DealProcessedEvent = {
+        id: uuidv4(),
+        timestamp: new Date(),
+        source: 'deal-processing-service',
+        type: 'business.deals.processed',
+        data: {
+          businessId,
+          dealsExtracted: 0,
+          hasActiveDeals: false
+        }
+      };
+
+      publishEvent(noDealEvent);
+
       logger.debug({
         businessId,
-        businessName: business.name
-      }, 'No deals found for business');
+        businessName: business.name,
+        eventId: noDealEvent.id
+      }, 'No deals found for business - photo processing will be skipped');
     }
 
   } catch (error) {
