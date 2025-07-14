@@ -8,7 +8,7 @@ import type { BusinessDeduplicatedEvent, PhotoProcessedEvent } from '../events/e
 
 // Configuration
 const PHOTO_CONFIG = {
-  maxPhotosPerBusiness: 10, // FIXED: Updated to 10 as requested
+  maxPhotosPerBusiness: 7, // 7 for now
   maxImageSize: 10 * 1024 * 1024, // 10MB
   downloadTimeout: 15000, // 15 seconds
   delayBetweenPhotos: 500, // 500ms between photo downloads

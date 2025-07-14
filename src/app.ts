@@ -8,46 +8,234 @@ import prisma from './prismaClient';
 // Import functional event-driven services
 import { initializeStandardizationService } from './services/standardizationService';
 import { initializeDeduplicationService, getDeduplicationStats } from './services/deduplicationService';
-// import { initializeDealProcessingService } from './services/dealProcessingService'; // PAUSED
 import { initializePhotoProcessingService } from './services/photoProcessingService';
 import { subscribeToEvent } from './events/eventBus';
+import { getEventStats, isEventSystemHealthy } from './events/eventBus';
 
-const app = express()
+const app = express();
 
-app.use(cors({
-    origin: process.env.NODE_ENV === 'production' 
-      ? 'your-production-domain.com' 
-      : 'http://localhost:3000'
+// Security middleware
+app.use((req, res, next) => {
+  // Remove X-Powered-By header
+  res.removeHeader('X-Powered-By');
+  
+  // Add security headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  // Add HSTS in production
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  
+  next();
+});
+
+// CORS configuration
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',          // Local development
+      'http://localhost:3001',          // Local backend
+      'https://localhost:3000',         // Local HTTPS
+      process.env.FRONTEND_URL,         // Production frontend
+      process.env.ADMIN_URL,            // Admin panel if different
+    ].filter(Boolean); // Remove undefined values
+
+    // In development, be more permissive
+    if (process.env.NODE_ENV === 'development') {
+      allowedOrigins.push(
+        /^http:\/\/localhost:\d+$/,     // Any localhost port
+        /^https:\/\/localhost:\d+$/,    // Any localhost HTTPS port
+        /^http:\/\/127\.0\.0\.1:\d+$/,  // 127.0.0.1 variants
+        /^https:\/\/127\.0\.0\.1:\d+$/, 
+      );
+    }
+
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (typeof allowed === 'string') {
+        return allowed === origin;
+      } else if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return false;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      logger.warn({ origin }, 'CORS: Origin not allowed');
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true, // Allow cookies and auth headers
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: [
+    'Origin',
+    'X-Requested-With',
+    'Content-Type',
+    'Accept',
+    'Authorization',
+    'Cache-Control',
+    'X-Forwarded-For'
+  ],
+  exposedHeaders: [
+    'X-Total-Count',
+    'X-Page-Count',
+    'X-Current-Page',
+    'X-Per-Page'
+  ],
+  maxAge: 86400 // 24 hours
+};
+
+app.use(cors(corsOptions));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  
+  // Log incoming requests
+  logger.info({
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+    userAgent: req.get('User-Agent'),
+    origin: req.get('Origin')
+  }, 'Incoming request');
+
+  // Log response when request completes
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    logger.info({
+      method: req.method,
+      url: req.url,
+      status: res.statusCode,
+      duration,
+      contentLength: res.get('Content-Length')
+    }, 'Request completed');
+  });
+
+  next();
+});
+
+// Body parsing with size limits
+app.use(express.json({ 
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    // Store raw body for signature verification if needed
+    (req as any).rawBody = buf;
+  }
 }));
 
-app.use(express.json())
+app.use(express.urlencoded({ 
+  extended: true, 
+  limit: '10mb' 
+}));
 
-// Mount the routes
+// Rate limiting middleware (basic implementation)
+const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
+
+const rateLimit = (maxRequests: number = 100, windowMs: number = 15 * 60 * 1000) => {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const ip = req.ip;
+    const now = Date.now();
+    const windowStart = now - windowMs;
+
+    // Clean up old entries
+    for (const [key, value] of rateLimitStore.entries()) {
+      if (value.resetTime < now) {
+        rateLimitStore.delete(key);
+      }
+    }
+
+    const current = rateLimitStore.get(ip) || { count: 0, resetTime: now + windowMs };
+    
+    if (current.resetTime < now) {
+      // Reset window
+      current.count = 1;
+      current.resetTime = now + windowMs;
+    } else {
+      current.count++;
+    }
+
+    rateLimitStore.set(ip, current);
+
+    // Set rate limit headers
+    res.setHeader('X-RateLimit-Limit', maxRequests);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - current.count));
+    res.setHeader('X-RateLimit-Reset', Math.ceil(current.resetTime / 1000));
+
+    if (current.count > maxRequests) {
+      logger.warn({ ip, count: current.count }, 'Rate limit exceeded');
+      return res.status(429).json({
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded, please try again later.',
+        retryAfter: Math.ceil((current.resetTime - now) / 1000)
+      });
+    }
+
+    next();
+  };
+};
+
+// Apply rate limiting globally (more permissive in development)
+const globalRateLimit = process.env.NODE_ENV === 'production' 
+  ? rateLimit(100, 15 * 60 * 1000)  // 100 requests per 15 minutes in production
+  : rateLimit(1000, 15 * 60 * 1000); // 1000 requests per 15 minutes in development
+
+app.use(globalRateLimit);
+
+// API routes with additional rate limiting for specific endpoints
 app.use('/', router);
 
-// Setup Bull dashboard
+// Setup Bull dashboard with authentication
 setupBullDashboard(app);
+
+// Global error handler
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  logger.error({
+    err: error,
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  }, 'Unhandled request error');
+
+  // Don't leak error details in production
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  
+  res.status(error.status || 500).json({
+    error: error.status < 500 ? error.message : 'Internal Server Error',
+    ...(isDevelopment && { 
+      stack: error.stack,
+      details: error.details 
+    }),
+    timestamp: new Date().toISOString(),
+    requestId: req.get('X-Request-ID') || 'unknown'
+  });
+});
 
 // Initialize Event-Driven Architecture
 const initializeEventSystem = async () => {
   try {
-    logger.info('Initializing streamlined event-driven business processing system...');
+    logger.info('Initializing enhanced event-driven business processing system...');
 
-    // UPDATED: Simplified flow - Raw → Standard → Dedupe → Photos (deal processing paused)
+    // Initialize core services
     logger.info('Initializing standardization service...');
     initializeStandardizationService();
     
     logger.info('Initializing deduplication service...');
     initializeDeduplicationService();
 
-    // DEAL PROCESSING PAUSED - Will be re-enabled with more robust solution
-    // logger.info('Initializing deal processing service...');
-    // initializeDealProcessingService();
-
-    logger.info('Initializing photo processing service (post-deduplication)...');
+    logger.info('Initializing photo processing service...');
     initializePhotoProcessingService();
     
-    // Set up monitoring for business events using correct event types
+    // Set up comprehensive event monitoring
     subscribeToEvent('business.raw.collected', async (event) => {
       logger.debug({
         eventId: event.id,
@@ -75,17 +263,6 @@ const initializeEventSystem = async () => {
       }, 'Business processed through deduplication - proceeding to photo processing');
     });
 
-    // UPDATED: Deal processing events commented out (service paused)
-    // subscribeToEvent('business.deals.processed', async (event) => {
-    //   logger.info({
-    //     eventId: event.id,
-    //     businessId: 'businessId' in event.data ? event.data.businessId : undefined,
-    //     hasDeals: 'hasActiveDeals' in event.data ? event.data.hasActiveDeals : undefined,
-    //     dealsCount: 'dealsExtracted' in event.data ? event.data.dealsExtracted : undefined
-    //   }, 'Deal processing completed');
-    // });
-
-    // Monitor photo processing events (now triggered after deduplication)
     subscribeToEvent('business.photos.processed', async (event) => {
       logger.info({
         eventId: event.id,
@@ -96,9 +273,8 @@ const initializeEventSystem = async () => {
       }, 'Business photos successfully processed');
     });
 
-    logger.info('Streamlined event-driven system initialized successfully');
+    logger.info('Enhanced event-driven system initialized successfully');
     logger.info('Current flow: Raw Collection → Standardization → Deduplication → Photo Processing');
-    logger.warn('Deal processing is currently PAUSED - will be re-enabled with more robust extraction');
     
     return {
       standardizationInitialized: true,
@@ -108,7 +284,7 @@ const initializeEventSystem = async () => {
     };
 
   } catch (error) {
-    logger.error({ err: error }, 'Failed to initialize streamlined event-driven system');
+    logger.error({ err: error }, 'Failed to initialize enhanced event-driven system');
     throw error;
   }
 };
@@ -119,252 +295,140 @@ initializeEventSystem().catch(error => {
   process.exit(1);
 });
 
-// Health check endpoints
-app.get('/health/events', async (req, res) => {
+// Enhanced health check endpoints
+app.get('/health', async (req, res) => {
   try {
+    // Basic health check
     const health = {
-      eventSystem: 'operational',
-      architecture: 'streamlined-functional',
-      currentFlow: 'Raw → Standardize → Dedupe → Photos',
-      services: {
-        standardization: 'operational',
-        deduplication: 'operational',
-        dealProcessing: 'PAUSED', // Will be re-enabled
-        photoProcessing: 'operational (post-deduplication)'
-      },
+      status: 'healthy',
+      service: 'hoppy-hour-backend',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime()
+      version: process.env.npm_package_version || '1.0.0',
+      environment: process.env.NODE_ENV || 'development',
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      database: 'unknown',
+      eventSystem: 'unknown'
     };
 
-    res.json(health);
+    // Test database connection
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      health.database = 'connected';
+    } catch (dbError) {
+      health.database = 'disconnected';
+      logger.error({ err: dbError }, 'Database health check failed');
+    }
+
+    // Test event system
+    health.eventSystem = isEventSystemHealthy() ? 'operational' : 'error';
+
+    const overallHealthy = health.database === 'connected' && health.eventSystem === 'operational';
+    
+    res.status(overallHealthy ? 200 : 503).json(health);
   } catch (error) {
-    res.status(500).json({
-      eventSystem: 'error',
+    logger.error({ err: error }, 'Health check failed');
+    res.status(503).json({
+      status: 'unhealthy',
       error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     });
   }
 });
 
-// Deduplication stats endpoint
-app.get('/admin/deduplication/stats', async (req, res) => {
+app.get('/health/detailed', async (req, res) => {
   try {
-    const stats = await getDeduplicationStats();
-    res.json(stats);
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get deduplication stats');
-    res.status(500).json({
-      error: 'Failed to retrieve deduplication statistics'
-    });
-  }
-});
-
-// UPDATED: General business processing stats (not deal-focused)
-app.get('/admin/processing/stats', async (req, res) => {
-  try {
+    const eventStats = getEventStats();
+    const deduplicationStats = await getDeduplicationStats();
+    
     const totalBusinesses = await prisma.business.count();
-    
     const businessesWithPhotos = await prisma.business.count({
-      where: {
-        photos: {
-          some: {}
-        }
-      }
+      where: { photos: { some: {} } }
     });
 
-    // Count by source
-    const sourceBreakdown = {
-      google: await prisma.business.count({ 
-        where: { 
-          sourceBusinesses: {
-            some: { source: 'GOOGLE' }
-          }
-        } 
-      }),
-      yelp: await prisma.business.count({ 
-        where: { 
-          sourceBusinesses: {
-            some: { source: 'YELP' }
-          }
-        } 
-      }),
-      manual: await prisma.business.count({ 
-        where: { 
-          sourceBusinesses: {
-            none: {}
-          }
-        }
-      })
-    };
-
-    const totalPhotos = await prisma.photo.count();
-    const photosWithS3 = await prisma.photo.count({
-      where: { s3Key: { not: null } }
-    });
-
-    const averageRating = await prisma.business.aggregate({
-      _avg: { ratingOverall: true }
-    });
-
-    const stats = {
-      totalBusinesses,
-      businessesWithPhotos,
-      businessesWithoutPhotos: totalBusinesses - businessesWithPhotos,
-      photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
-      totalPhotos,
-      photosWithS3Storage: photosWithS3,
-      photosExternalOnly: totalPhotos - photosWithS3,
-      averageRating: averageRating._avg.ratingOverall || 0,
-      sources: sourceBreakdown,
-      processingFlow: 'Raw → Standardize → Dedupe → Photos',
-      dealProcessingStatus: 'PAUSED'
-    };
-
-    res.json(stats);
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get processing stats');
-    res.status(500).json({
-      error: 'Failed to retrieve processing statistics'
-    });
-  }
-});
-
-// Photo processing stats endpoint (now for all businesses)
-app.get('/admin/photo-processing/stats', async (req, res) => {
-  try {
-    const totalBusinesses = await prisma.business.count();
-    
-    const businessesWithPhotos = await prisma.business.count({
-      where: {
-        photos: {
-          some: {}
-        }
-      }
-    });
-    
-    const totalPhotos = await prisma.photo.count();
-    
-    const photosWithS3 = await prisma.photo.count({
-      where: { s3Key: { not: null } }
-    });
-
-    const mainPhotos = await prisma.photo.count({
-      where: { mainPhoto: true }
-    });
-
-    const stats = {
-      totalBusinesses,
-      businessesWithPhotos,
-      businessesWithoutPhotos: totalBusinesses - businessesWithPhotos,
-      totalPhotos,
-      photosWithS3Storage: photosWithS3,
-      photosExternalOnly: totalPhotos - photosWithS3,
-      mainPhotosSet: mainPhotos,
-      photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
-      averagePhotosPerBusiness: totalBusinesses > 0 ? (totalPhotos / totalBusinesses).toFixed(1) : 0,
-      trigger: 'post-deduplication',
-      note: "Photo processing now triggers after deduplication for all businesses"
-    };
-
-    res.json(stats);
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get photo processing stats');
-    res.status(500).json({
-      error: 'Failed to retrieve photo processing statistics'
-    });
-  }
-});
-
-// Manual trigger endpoint for testing
-app.post('/admin/trigger-update/:location?', async (req, res) => {
-  try {
-    const location = req.params.location || 'downtown';
-    
-    logger.info({ location }, 'Manual update triggered via API');
-    
     res.json({
-      message: `Manual update triggered for ${location}`,
-      currentFlow: 'Raw Collection → Standardization → Deduplication → Photo Processing',
-      dealProcessing: 'PAUSED (will be re-enabled with robust extraction)',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      system: {
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        nodeVersion: process.version,
+        platform: process.platform
+      },
+      database: {
+        totalBusinesses,
+        businessesWithPhotos,
+        photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0
+      },
+      eventSystem: {
+        healthy: isEventSystemHealthy(),
+        totalEvents: eventStats.totalEvents,
+        listenerStats: eventStats.listenerStats,
+        recentEvents: eventStats.recentEvents
+      },
+      deduplication: deduplicationStats,
+      services: {
+        standardization: 'operational',
+        deduplication: 'operational',
+        photoProcessing: 'operational',
+        dealProcessing: 'paused'
+      }
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Detailed health check failed');
+    res.status(503).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
       timestamp: new Date().toISOString()
     });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to trigger manual update');
-    res.status(500).json({
-      error: 'Failed to trigger manual update'
-    });
   }
 });
 
-// Test endpoint to verify streamlined event system
-app.post('/admin/test-events', async (req, res) => {
-  try {
-    const { publishEvent } = await import('./events/eventBus');
-    const { v4: uuidv4 } = await import('uuid');
-    
-    // Create a test event
-    const testEvent = {
-      id: uuidv4(),
-      timestamp: new Date(),
-      source: 'test-api',
-      type: 'business.raw.collected' as const,
-      data: {
-        sourceId: 'test-123',
-        source: 'GOOGLE' as const,
-        rawData: {
-          id: 'test-123',
-          displayName: { text: 'Test Business' },
-          formattedAddress: '123 Test St, Austin, TX',
-          location: { latitude: 30.2672, longitude: -97.7431 },
-          types: ['bar', 'restaurant'],
-          photos: [
-            {
-              name: 'places/test-123/photos/photo-1',
-              widthPx: 800,
-              heightPx: 600
-            }
-          ]
-        },
-        location: {
-          lat: 30.2672,
-          lng: -97.7431,
-          name: 'Test Location'
-        }
-      }
-    };
+// Graceful shutdown handling
+let isShuttingDown = false;
 
-    publishEvent(testEvent);
-    
-    res.json({
-      message: 'Test event published successfully',
-      eventId: testEvent.id,
-      expectedFlow: 'Raw → Standardize → Dedupe → Photos (deal processing skipped)',
-      timestamp: new Date().toISOString()
+const gracefulShutdown = (signal: string) => {
+  if (isShuttingDown) return;
+  
+  logger.info({ signal }, 'Received shutdown signal, starting graceful shutdown...');
+  isShuttingDown = true;
+
+  // Stop accepting new requests
+  app.use((req, res) => {
+    res.status(503).json({
+      error: 'Service Unavailable',
+      message: 'Server is shutting down'
     });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to publish test event');
-    res.status(500).json({
-      error: 'Failed to publish test event'
+  });
+
+  // Close database connections
+  prisma.$disconnect()
+    .then(() => logger.info('Database connections closed'))
+    .catch(err => logger.error({ err }, 'Error closing database connections'))
+    .finally(() => {
+      logger.info('Graceful shutdown completed');
+      process.exit(0);
     });
-  }
+
+  // Force exit after 10 seconds
+  setTimeout(() => {
+    logger.error('Force shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error({ err: error }, 'Uncaught exception');
+  gracefulShutdown('uncaughtException');
 });
 
-// Endpoint to check deal processing status
-app.get('/admin/deal-processing/status', async (req, res) => {
-  try {
-    res.json({
-      status: 'PAUSED',
-      reason: 'Regex-based extraction being replaced with more robust solution',
-      whenEnabled: 'Will be re-enabled with improved extraction logic',
-      currentDeals: await prisma.deal.count({ where: { isActive: true } }),
-      note: 'Existing deals (if any) are preserved but new extraction is disabled'
-    });
-  } catch (error) {
-    logger.error({ err: error }, 'Failed to get deal processing status');
-    res.status(500).json({
-      error: 'Failed to retrieve deal processing status'
-    });
-  }
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error({ reason, promise }, 'Unhandled promise rejection');
+  gracefulShutdown('unhandledRejection');
 });
 
-export default app
+export default app;
