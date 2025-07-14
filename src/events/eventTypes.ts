@@ -42,7 +42,7 @@ export interface BusinessDeduplicatedEvent extends BaseEvent {
   };
 }
 
-// Deal processing completion event - NEW
+// Deal processing completion event
 export interface DealProcessedEvent extends BaseEvent {
   type: 'business.deals.processed';
   data: {
@@ -63,23 +63,21 @@ export interface PhotoProcessedEvent extends BaseEvent {
   };
 }
 
-// Union type for all events
+// Union type for all events (DomainEvent is the comprehensive type)
 export type DomainEvent = 
   | BusinessRawCollectedEvent 
   | BusinessStandardizedEvent 
   | BusinessDeduplicatedEvent
-  | DealProcessedEvent           // NEW
+  | DealProcessedEvent
   | PhotoProcessedEvent;
 
-// MISSING TYPES that your types/index.ts needs:
-
-// Generic business event type (alias for DomainEvent)
+// Generic business event type (alias for DomainEvent - this was missing)
 export type BusinessEvent = DomainEvent;
 
-// Event handler function type
+// Event handler function type (this was missing)
 export type EventHandler<T extends DomainEvent = DomainEvent> = (event: T) => Promise<void> | void;
 
-// Event type mapping
+// Event type mapping (this was missing proper completion)
 export type EventTypeMap = {
   'business.raw.collected': BusinessRawCollectedEvent;
   'business.standardized': BusinessStandardizedEvent;
@@ -88,7 +86,7 @@ export type EventTypeMap = {
   'business.photos.processed': PhotoProcessedEvent;
 };
 
-// Event name type
+// Event name type (this was missing)
 export type EventName = keyof EventTypeMap;
 
 // Type guard functions

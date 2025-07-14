@@ -1,85 +1,89 @@
 import { Business, Prisma } from '@prisma/client';
 import prisma from '../prismaClient';
 
+// Create one business
+export const createBusinessService = async (data: Prisma.BusinessCreateInput): Promise<Business> => {
+  return await prisma.business.create({
+    data
+  });
+};
 
-// create one
-export const createBusinessService = async (data: Prisma.BusinessCreateInput) => {
-    return await prisma.business.create({
-      data
-    });
-  };
-
-
-// create many
+// Create many businesses
 export const createManyBusinessService = async (
-    data: Prisma.BusinessCreateManyInput[]
-  ) => {
-      return await prisma.business.createMany({
-        data,
-        skipDuplicates: true // Optional: Avoid errors for duplicate records
-      });
-  };
+  data: Prisma.BusinessCreateManyInput[]
+): Promise<Prisma.BatchPayload> => {
+  return await prisma.business.createMany({
+    data,
+    skipDuplicates: true // Optional: Avoid errors for duplicate records
+  });
+};
 
-  // get one
-  export const getOneBusinessService = async (
-      conditions: Prisma.BusinessWhereUniqueInput
-    ) => {
-        return await prisma.business.findUnique({
-          where: conditions
-        });
-    };
+// Get one business
+export const getOneBusinessService = async (
+  conditions: Prisma.BusinessWhereUniqueInput
+): Promise<Business | null> => {
+  return await prisma.business.findUnique({
+    where: conditions,
+    include: {
+      photos: true,
+      deals: true
+    }
+  });
+};
 
-
-// get many
+// Get many businesses
 export const getManyBusinessService = async (
-    conditions?: Prisma.BusinessWhereInput
-  ) => {
-      return await prisma.business.findMany({
-        where: conditions
-      });
-  };
+  conditions?: Prisma.BusinessWhereInput
+): Promise<Business[]> => {
+  return await prisma.business.findMany({
+    where: conditions,
+    include: {
+      photos: true,
+      deals: true
+    }
+  });
+};
 
-
-// update one
+// Update one business
 export const updateOneBusinessService = async (
-    data: Prisma.BusinessUpdateInput
-  ) => {
-      const id = JSON.stringify(data.id)
-      return await prisma.business.update({
-        where: {
-          id,
-        },
-        data
-      });
-  };
+  where: Prisma.BusinessWhereUniqueInput,
+  data: Prisma.BusinessUpdateInput
+): Promise<Business> => {
+  return await prisma.business.update({
+    where,
+    data
+  });
+};
 
-// update many
+// Update many businesses
 export const updateManyBusinessService = async (
-    data: Prisma.BusinessUpdateManyMutationInput
-  ) => {
-      const id = JSON.stringify(data.id)
-      return await prisma.business.updateMany({
-        where: { id },
-        data: data
-      });
-  };
+  businessIds: string[],
+  data: Prisma.BusinessUpdateManyMutationInput
+): Promise<Prisma.BatchPayload> => {
+  return await prisma.business.updateMany({
+    where: { 
+      id: { 
+        in: businessIds 
+      } 
+    },
+    data
+  });
+};
 
-// delete one
+// Delete one business
 export const deleteOneBusinessService = async (
-    conditions: Prisma.BusinessWhereUniqueInput
-  ) => {
-      return await prisma.business.delete({
-        where: conditions,
-      });
-  };
+  conditions: Prisma.BusinessWhereUniqueInput
+): Promise<Business> => {
+  return await prisma.business.delete({
+    where: conditions,
+  });
+};
 
-// delete many
+// Delete many businesses
 export const deleteManyBusinessService = async (
-    conditions: Prisma.BusinessWhereInput
-  ) => {
-      return await prisma.business.deleteMany({
-        where: conditions,
-      });
-  };
-
-
+  conditions: Prisma.BusinessWhereInput
+): Promise<Prisma.BatchPayload> => {
+  return await prisma.business.deleteMany({
+    where: conditions,
+  });
+};

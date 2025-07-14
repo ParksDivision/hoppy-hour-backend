@@ -8,17 +8,24 @@ import {
   updateManyUsers,
   deleteUser,
   deleteManyUsers
-} from '../controllers/userController'
+} from '../controllers/userController';
 
 const userRoutes = Router();
 
+// GET routes
 userRoutes.get('/:id', getOneUser);
-userRoutes.get('/', getManyUsers)
-userRoutes.post('/', createUser);
-userRoutes.post('/', createManyUsers);
-userRoutes.put('/update/:id', updateUser)
-userRoutes.put('/update', updateManyUsers)
-userRoutes.delete('/delete/:id', deleteUser)
-userRoutes.delete('/delete', deleteManyUsers)
+userRoutes.get('/', getManyUsers);
+
+// POST routes - Fixed duplicate route conflict
+userRoutes.post('/many', createManyUsers);  // Specific route first
+userRoutes.post('/', createUser);           // General route second
+
+// PUT routes
+userRoutes.put('/update/:id', updateUser);
+userRoutes.put('/update', updateManyUsers);
+
+// DELETE routes
+userRoutes.delete('/delete/:id', deleteUser);
+userRoutes.delete('/delete', deleteManyUsers);
 
 export default userRoutes;

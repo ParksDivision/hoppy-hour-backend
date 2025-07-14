@@ -39,13 +39,13 @@ const corsOptions = {
     // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = [
+    const allowedOrigins: (string | RegExp)[] = [
       'http://localhost:3000',          // Local development
       'http://localhost:3001',          // Local backend
       'https://localhost:3000',         // Local HTTPS
       process.env.FRONTEND_URL,         // Production frontend
       process.env.ADMIN_URL,            // Admin panel if different
-    ].filter(Boolean); // Remove undefined values
+    ].filter(Boolean) as (string | RegExp)[]; // Remove undefined values
 
     // In development, be more permissive
     if (process.env.NODE_ENV === 'development') {
@@ -141,8 +141,8 @@ app.use(express.urlencoded({
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 
 const rateLimit = (maxRequests: number = 100, windowMs: number = 15 * 60 * 1000) => {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const ip = req.ip;
+  return (req: express.Request, res: express.Response, next: express.NextFunction): void => {
+    const ip = req.ip ?? 'unknown';
     const now = Date.now();
     const windowStart = now - windowMs;
 
@@ -172,11 +172,12 @@ const rateLimit = (maxRequests: number = 100, windowMs: number = 15 * 60 * 1000)
 
     if (current.count > maxRequests) {
       logger.warn({ ip, count: current.count }, 'Rate limit exceeded');
-      return res.status(429).json({
+      res.status(429).json({
         error: 'Too Many Requests',
         message: 'Rate limit exceeded, please try again later.',
         retryAfter: Math.ceil((current.resetTime - now) / 1000)
       });
+      return;
     }
 
     next();

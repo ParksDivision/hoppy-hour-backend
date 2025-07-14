@@ -14,16 +14,39 @@ export type {
   Location,
   BusinessSearchResponse,
   BusinessLocationSearchResponse,
-  BusinessCategoryResponse
+  BusinessCategoryResponse,
+  // Additional business types that were missing
+  FrontendBusiness,
+  FrontendPhoto,
+  FrontendDeal,
+  BusinessApiResponse,
+  SearchApiResponse,
+  CostReport,
+  CostEstimate,
+  RateLimitConfig,
+  S3Operation,
+  ImageVariant,
+  ImageVariantSettings,
+  CloudflareConfig,
+  DealStats,
+  ProcessingMetrics,
+  ServiceStatus,
+  SystemHealth,
+  HealthCheckResponse,
+  MatchCandidate,
+  SimilarityScores
 } from './business';
 
-// Event types
+// Event types - Fixed missing exports
 export type {
   BaseEvent,
   BusinessRawCollectedEvent,
   BusinessStandardizedEvent,
   BusinessDeduplicatedEvent,
+  DealProcessedEvent,
+  PhotoProcessedEvent,
   BusinessEvent,
+  DomainEvent,
   EventHandler,
   EventTypeMap,
   EventName
@@ -61,4 +84,13 @@ export interface AuditFields {
   updatedBy?: number;
   deletedOn?: Date;
   deletedBy?: number;
+}
+
+// API Error type (was missing)
+export interface ApiError {
+  message: string;
+  status: number;
+  code?: string;
+  details?: any;
+  timestamp: string;
 }

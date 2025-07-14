@@ -1,5 +1,8 @@
 // src/types/business.ts
 
+// Business source types
+export type BusinessSource = 'GOOGLE' | 'YELP' | 'FACEBOOK' | 'MANUAL';
+
 // Core business data after standardization
 export interface StandardizedBusiness {
   name: string;
@@ -24,11 +27,80 @@ export interface StandardizedBusiness {
   source: BusinessSource;
 }
 
-// Business source types
-export type BusinessSource = 'GOOGLE' | 'YELP' | 'FACEBOOK' | 'MANUAL';
+// Business search criteria
+export interface BusinessSearchCriteria {
+  latitude?: number;
+  longitude?: number;
+  radiusKm?: number;
+  category?: string;
+  withDealsOnly?: boolean;
+  withPhotosOnly?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// Business creation input
+export interface BusinessCreateInput {
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  phone?: string;
+  website?: string;
+  isBar?: boolean;
+  isRestaurant?: boolean;
+  categories?: string[];
+  source: BusinessSource;
+  sourceId: string;
+}
+
+// Business update input
+export interface BusinessUpdateInput {
+  name?: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+  website?: string;
+  isBar?: boolean;
+  isRestaurant?: boolean;
+  categories?: string[];
+  ratingGoogle?: number;
+  ratingYelp?: number;
+  ratingOverall?: number;
+  priceLevel?: number;
+  operatingHours?: string[];
+}
+
+// Business with relations
+export interface BusinessWithRelations {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  phone?: string;
+  website?: string;
+  isBar: boolean;
+  isRestaurant: boolean;
+  categories: string[];
+  ratingGoogle?: number;
+  ratingYelp?: number;
+  ratingOverall?: number;
+  priceLevel?: number;
+  operatingHours: string[];
+  source: BusinessSource;
+  sourceId: string;
+  photos: BusinessPhoto[];
+  deals: BusinessDeal[];
+  createdOn: Date;
+  updatedOn?: Date;
+}
 
 // Photo data structure
-export interface PhotoData {
+export interface BusinessPhoto {
+  id: string;
+  businessId: string;
   sourceId: string;
   source: string;
   width?: number;
@@ -43,11 +115,14 @@ export interface PhotoData {
   format?: string;
   fileSize?: number;
   lastProcessed?: Date;
-  businessId: string;
+  createdOn: Date;
+  updatedOn?: Date;
 }
 
 // Deal data structure
-export interface DealData {
+export interface BusinessDeal {
+  id: string;
+  businessId: string;
   dayOfWeek?: number;
   startTime?: string;
   endTime?: string;
@@ -56,80 +131,23 @@ export interface DealData {
   extractedBy: string;
   sourceText: string;
   confidence: number;
+  createdOn: Date;
+  updatedOn?: Date;
 }
 
-// Event system types
-export interface BaseEvent {
-  id: string;
-  timestamp: Date;
-  source: string;
-  type: string;
-  data: any;
+// Source business (for API responses)
+export interface SourceBusiness {
+  sourceId: string;
+  source: BusinessSource;
+  rawData: any;
 }
 
-// Raw business collected event
-export interface BusinessRawCollectedEvent extends BaseEvent {
-  type: 'business.raw.collected';
-  data: {
-    sourceId: string;
-    source: BusinessSource;
-    rawData: any;
-    location?: {
-      lat: number;
-      lng: number;
-      name: string;
-    };
-  };
+// Location types for Google Places
+export interface Location {
+  lat: number;
+  lng: number;
+  name: string;
 }
-
-// Business standardized event
-export interface BusinessStandardizedEvent extends BaseEvent {
-  type: 'business.standardized';
-  data: {
-    sourceId: string;
-    source: BusinessSource;
-    standardizedBusiness: StandardizedBusiness;
-  };
-}
-
-// Business deduplicated event
-export interface BusinessDeduplicatedEvent extends BaseEvent {
-  type: 'business.deduplicated';
-  data: {
-    businessId: string;
-    action: 'created' | 'merged' | 'updated';
-    confidence: number;
-  };
-}
-
-// Deal processed event
-export interface DealProcessedEvent extends BaseEvent {
-  type: 'business.deals.processed';
-  data: {
-    businessId: string;
-    dealsExtracted: number;
-    hasActiveDeals: boolean;
-  };
-}
-
-// Photo processed event
-export interface PhotoProcessedEvent extends BaseEvent {
-  type: 'business.photos.processed';
-  data: {
-    businessId: string;
-    photosProcessed: number;
-    mainPhotoSet: boolean;
-    hasS3Storage: boolean;
-  };
-}
-
-// Union type for all events
-export type BusinessEvent = 
-  | BusinessRawCollectedEvent
-  | BusinessStandardizedEvent
-  | BusinessDeduplicatedEvent
-  | DealProcessedEvent
-  | PhotoProcessedEvent;
 
 // Similarity scoring for deduplication
 export interface SimilarityScores {
@@ -160,6 +178,24 @@ export interface BusinessApiResponse {
     limit: number;
     offset: number;
   };
+}
+
+export interface BusinessSearchResponse {
+  businesses: BusinessWithRelations[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface BusinessLocationSearchResponse {
+  results: BusinessWithRelations[];
+  count: number;
+  searchCriteria: BusinessSearchCriteria;
+}
+
+export interface BusinessCategoryResponse {
+  businesses: BusinessWithRelations[];
+  category: string;
+  count: number;
 }
 
 export interface SearchApiResponse {
@@ -255,34 +291,6 @@ export interface DealStats {
   note?: string;
 }
 
-// Error types
-export interface ApiError {
-  message: string;
-  code?: string;
-  details?: any;
-  timestamp: string;
-}
-
-// Health check response
-export interface HealthCheckResponse {
-  status: 'healthy' | 'unhealthy';
-  service: string;
-  timestamp: string;
-  version: string;
-  eventSystem?: string;
-  architecture?: string;
-  currentFlow?: string;
-  services?: Record<string, string>;
-  uptime?: number;
-}
-
-// Location types for Google Places
-export interface Location {
-  lat: number;
-  lng: number;
-  name: string;
-}
-
 // Utility types for data processing
 export interface ProcessingMetrics {
   processingTime: number;
@@ -372,4 +380,25 @@ export interface SystemHealth {
   services: ServiceStatus;
   timestamp: string;
   uptime: number;
+}
+
+// Health check response
+export interface HealthCheckResponse {
+  status: 'healthy' | 'unhealthy';
+  service: string;
+  timestamp: string;
+  version: string;
+  eventSystem?: string;
+  architecture?: string;
+  currentFlow?: string;
+  services?: Record<string, string>;
+  uptime?: number;
+}
+
+// Error types
+export interface ApiError {
+  message: string;
+  code?: string;
+  details?: any;
+  timestamp: string;
 }

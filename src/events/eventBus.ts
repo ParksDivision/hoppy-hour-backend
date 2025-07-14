@@ -190,7 +190,7 @@ export const waitForEvent = <T extends BusinessEvent>(
       reject(new Error(`Event ${eventType} not received within ${timeout}ms`));
     }, timeout);
 
-    const handler = (event: T) => {
+    const handler = async (event: T) => {
       if (!filter || filter(event)) {
         cleanup();
         resolve(event);

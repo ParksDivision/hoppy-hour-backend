@@ -14,6 +14,7 @@ import {
     searchBusinesses 
 } from '../repositories/businessRepository';
 import prisma from '../prismaClient';
+import { Prisma } from '@prisma/client';
 import { cloudflareS3Service } from '../utils/cloudflareS3Service';
 import { logger } from '../utils/logger/logger';
 
@@ -30,7 +31,7 @@ const generateCDNUrl = (s3Key: string | null | undefined): string | null => {
 };
 
 // Helper function to transform deals to match frontend expectation
-const transformDealsToFrontendFormat = (deals: any[]) => {
+const transformDealsToFrontendFormat = (deals: any[]): any[] => {
     return deals.map(deal => ({
         id: deal.id,
         businessId: deal.businessId,
@@ -42,7 +43,7 @@ const transformDealsToFrontendFormat = (deals: any[]) => {
 };
 
 // Helper function to transform business data for frontend
-const transformBusinessForFrontend = (business: any) => {
+const transformBusinessForFrontend = (business: any): any => {
     // Transform photos with CDN URLs
     const photosWithCDN = business.photos.map((photo: any) => ({
         id: photo.id,
@@ -58,18 +59,18 @@ const transformBusinessForFrontend = (business: any) => {
         s3KeySmall: photo.s3KeySmall,
         s3KeyMedium: photo.s3KeyMedium,
         s3KeyLarge: photo.s3KeyLarge,
-        // CDN URLs for direct use
         cdnUrls: {
             original: generateCDNUrl(photo.s3Key),
             thumbnail: generateCDNUrl(photo.s3KeyThumbnail),
             small: generateCDNUrl(photo.s3KeySmall),
             medium: generateCDNUrl(photo.s3KeyMedium),
-            large: generateCDNUrl(photo.s3KeyLarge)
-        }
+            large: generateCDNUrl(photo.s3KeyLarge),
+        },
+        fallbackUrl: photo.url
     }));
 
-    // Transform deals to match frontend expectation
-    const dealInfo = transformDealsToFrontendFormat(business.deals || []);
+    // Transform deals for frontend format
+    const dealsFormatted = transformDealsToFrontendFormat(business.deals || []);
 
     return {
         id: business.id,
@@ -77,21 +78,21 @@ const transformBusinessForFrontend = (business: any) => {
         latitude: business.latitude,
         longitude: business.longitude,
         address: business.address,
-        phoneNumber: business.phone,
+        phoneNumber: business.phoneNumber,
         priceLevel: business.priceLevel,
         isBar: business.isBar,
         isRestaurant: business.isRestaurant,
-        url: business.website,
+        url: business.url,
         ratingOverall: business.ratingOverall,
         ratingYelp: business.ratingYelp,
         ratingGoogle: business.ratingGoogle,
-        operatingHours: business.operatingHours ? business.operatingHours.join(', ') : null,
-        categories: business.categories || [], // FIXED: Include categories field
+        operatingHours: business.operatingHours,
         photos: photosWithCDN,
-        dealInfo: dealInfo // Frontend expects 'dealInfo', not 'deals'
+        dealInfo: dealsFormatted
     };
 };
 
+// Get one business
 export const getOneBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const { id } = req.params;
@@ -101,401 +102,174 @@ export const getOneBusiness = async (req: Request, res: Response): Promise<void>
             return;
         }
 
-        const business = await prisma.business.findUnique({
-            where: { id },
-            include: {
-                photos: {
-                    orderBy: { mainPhoto: 'desc' }
-                },
-                deals: {
-                    where: { isActive: true },
-                    orderBy: { startTime: 'asc' }
-                }
-            }
-        });
+        const business = await getOneBusinessService({ id });
 
         if (!business) {
             res.status(404).json({ message: "Business not found." });
             return;
         }
-        
-        const transformedBusiness = transformBusinessForFrontend(business);
-        res.status(200).json(transformedBusiness);
+
+        res.status(200).json(business);
     } catch (error) {
         logger.error({ err: error }, "Error fetching business");
         res.status(500).json({ message: "Error fetching business." });
     }
 };
 
+// Get many businesses
 export const getManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { 
-            limit = '50', 
-            offset = '0', 
-            withPhotosOnly = 'false',
-            page = '1'
-        } = req.query;
-        
-        const pageSize = parseInt(limit as string);
-        const pageNumber = parseInt(page as string);
-        const skip = (pageNumber - 1) * pageSize;
-        
-        let whereClause: any = {};
-        
-        if (withPhotosOnly === 'true') {
-            whereClause = {
-                photos: {
-                    some: {}
-                }
-            };
-        }
-
-        const [businesses, totalCount] = await Promise.all([
-            prisma.business.findMany({
-                where: whereClause,
-                include: {
-                    photos: {
-                        orderBy: { mainPhoto: 'desc' },
-                        take: 10
-                    },
-                    deals: {
-                        where: { isActive: true },
-                        orderBy: { startTime: 'asc' }
-                    }
-                },
-                orderBy: [
-                    { ratingOverall: 'desc' },
-                    { name: 'asc' }
-                ],
-                take: pageSize,
-                skip: skip
-            }),
-            prisma.business.count({ where: whereClause })
-        ]);
+        const businesses = await getManyBusinessService(req.body);
 
         if (!businesses || businesses.length === 0) {
-            res.status(200).json({
-                businesses: [],
-                count: 0,
-                totalCount: 0,
-                page: pageNumber,
-                totalPages: 0,
-                hasMore: false
-            });
+            res.status(404).json({ message: "Businesses not found." });
             return;
         }
 
-        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
-
-        const totalPages = Math.ceil(totalCount / pageSize);
-        const hasMore = pageNumber < totalPages;
-
-        res.json({
-            businesses: transformedBusinesses,
-            count: transformedBusinesses.length,
-            totalCount,
-            page: pageNumber,
-            totalPages,
-            hasMore,
-            filters: {
-                withPhotosOnly: withPhotosOnly === 'true',
-                limit: pageSize,
-                offset: skip
-            }
-        });
-
+        res.status(200).json(businesses);
     } catch (error) {
         logger.error({ err: error }, "Error fetching businesses");
         res.status(500).json({ message: "Error fetching businesses." });
     }
 };
 
-export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { category } = req.params;
-        const { isBar, isRestaurant, withDealsOnly = 'false' } = req.query;
-        
-        const whereClause: any = {};
-        
-        if (withDealsOnly === 'true') {
-            whereClause.deals = {
-                some: { isActive: true }
-            };
-        }
-
-        if (isBar === 'true') whereClause.isBar = true;
-        if (isRestaurant === 'true') whereClause.isRestaurant = true;
-
-        // FIXED: Make sure we fetch all necessary fields including categories
-        const businesses = await prisma.business.findMany({
-            where: whereClause,
-            include: {
-                photos: {
-                    where: { mainPhoto: true },
-                    take: 1
-                },
-                deals: {
-                    where: { isActive: true },
-                    orderBy: { startTime: 'asc' }
-                }
-            }
-        });
-
-        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
-
-        // FIXED: Now we can safely filter by categories since they're included in the transform
-        const filtered = transformedBusinesses.filter(business => {
-            // Check if categories exist and filter by category
-            if (!business.categories || !Array.isArray(business.categories)) {
-                return false;
-            }
-            
-            return business.categories.some((cat: string) => 
-                cat.toLowerCase().includes(category.toLowerCase())
-            );
-        });
-
-        res.json({
-            results: filtered,
-            count: filtered.length,
-            category,
-            filters: { 
-                isBar, 
-                isRestaurant, 
-                withDealsOnly: withDealsOnly === 'true'
-            }
-        });
-    } catch (error) {
-        logger.error({ err: error }, 'Error fetching businesses by category');
-        res.status(500).json({ message: 'Error fetching businesses by category' });
-    }
-};
-
+// Get business photos
 export const getBusinessPhotos = async (req: Request, res: Response): Promise<void> => {
     try {
         const { businessId } = req.params;
         
+        if (!businessId) {
+            res.status(400).json({ message: "Business ID is required." });
+            return;
+        }
+
         const photos = await prisma.photo.findMany({
-            where: { businessId },
-            orderBy: { mainPhoto: 'desc' }
+            where: { businessId }
         });
 
-        const photosWithCDNUrls = photos.map(photo => ({
-            id: photo.id,
-            businessId: photo.businessId,
-            sourceId: photo.sourceId,
-            source: photo.source,
-            width: photo.width,
-            height: photo.height,
-            url: photo.url,
-            mainPhoto: photo.mainPhoto,
-            s3Key: photo.s3Key,
-            s3KeyThumbnail: photo.s3KeyThumbnail,
-            s3KeySmall: photo.s3KeySmall,
-            s3KeyMedium: photo.s3KeyMedium,
-            s3KeyLarge: photo.s3KeyLarge,
+        const photosWithCDN = photos.map(photo => ({
+            ...photo,
             cdnUrls: {
                 original: generateCDNUrl(photo.s3Key),
                 thumbnail: generateCDNUrl(photo.s3KeyThumbnail),
                 small: generateCDNUrl(photo.s3KeySmall),
                 medium: generateCDNUrl(photo.s3KeyMedium),
-                large: generateCDNUrl(photo.s3KeyLarge)
+                large: generateCDNUrl(photo.s3KeyLarge),
             },
             fallbackUrl: photo.url
         }));
 
-        res.json(photosWithCDNUrls);
+        res.status(200).json(photosWithCDN);
     } catch (error) {
-        logger.error({ err: error }, 'Error fetching business photos');
-        res.status(500).json({ message: 'Error fetching business photos' });
+        logger.error({ err: error }, "Error fetching business photos");
+        res.status(500).json({ message: "Error fetching business photos." });
     }
 };
 
-// Keep all other existing functions...
-export const getBusinessesWithActiveDeals = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const currentDay = new Date().getDay();
-        const currentTime = new Date().toTimeString().slice(0, 5);
-        const { limit = 50, offset = 0 } = req.query;
-        
-        const businesses = await prisma.business.findMany({
-            where: {
-                deals: {
-                    some: {
-                        isActive: true,
-                        OR: [
-                            {
-                                dayOfWeek: currentDay,
-                                startTime: { lte: currentTime },
-                                endTime: { gte: currentTime }
-                            },
-                            {
-                                dayOfWeek: currentDay,
-                                startTime: null
-                            },
-                            {
-                                dayOfWeek: null
-                            }
-                        ]
-                    }
-                }
-            },
-            include: {
-                photos: {
-                    orderBy: { mainPhoto: 'desc' },
-                    take: 5
-                },
-                deals: {
-                    where: {
-                        isActive: true,
-                        OR: [
-                            { dayOfWeek: currentDay },
-                            { dayOfWeek: null }
-                        ]
-                    },
-                    orderBy: { startTime: 'asc' }
-                }
-            },
-            orderBy: [
-                { ratingOverall: 'desc' },
-                { name: 'asc' }
-            ],
-            take: parseInt(limit as string),
-            skip: parseInt(offset as string)
-        });
-
-        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
-
-        res.json({
-            businesses: transformedBusinesses,
-            count: transformedBusinesses.length,
-            currentDay: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][currentDay],
-            currentTime,
-            timestamp: new Date().toISOString()
-        });
-
-    } catch (error) {
-        logger.error({ err: error }, 'Failed to get businesses with active deals');
-        res.status(500).json({ message: "Error fetching businesses with active deals." });
-    }
-};
-
-// Location-based search
+// Search businesses by location
 export const searchBusinessesByLocation = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { lat, lng, radius = 1, withDealsOnly = 'false' } = req.query;
+        const { latitude, longitude, radiusKm = 5 } = req.query;
         
-        if (!lat || !lng) {
-            res.status(400).json({ 
-                message: "Latitude and longitude are required" 
-            });
+        if (!latitude || !longitude) {
+            res.status(400).json({ message: "Latitude and longitude are required." });
             return;
         }
 
         const businesses = await searchBusinesses({
-            latitude: parseFloat(lat as string),
-            longitude: parseFloat(lng as string),
-            radiusKm: parseFloat(radius as string),
-            limit: req.query.limit ? parseInt(req.query.limit as string) : 50
+            latitude: parseFloat(latitude as string),
+            longitude: parseFloat(longitude as string),
+            radiusKm: parseFloat(radiusKm as string)
         });
 
-        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
-
-        const filteredBusinesses = withDealsOnly === 'true' 
-            ? transformedBusinesses.filter(business => 
-                business.dealInfo && business.dealInfo.length > 0
-              )
-            : transformedBusinesses;
-
-        res.json({
-            results: filteredBusinesses,
-            count: filteredBusinesses.length,
-            searchCriteria: {
-                latitude: parseFloat(lat as string),
-                longitude: parseFloat(lng as string),
-                radiusKm: parseFloat(radius as string),
-                withDealsOnly: withDealsOnly === 'true'
-            }
-        });
+        const transformedBusinesses = (businesses as any[]).map(transformBusinessForFrontend);
+        res.status(200).json(transformedBusinesses);
     } catch (error) {
-        logger.error({ err: error }, 'Error searching businesses by location');
-        res.status(500).json({ message: 'Error searching businesses by location' });
+        logger.error({ err: error }, "Error searching businesses by location");
+        res.status(500).json({ message: "Error searching businesses by location." });
     }
 };
 
+// Get businesses by category
+export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { category } = req.params;
+        
+        if (!category) {
+            res.status(400).json({ message: "Category is required." });
+            return;
+        }
+
+        const businesses = await prisma.business.findMany({
+            where: {
+                categories: {
+                    has: category
+                }
+            },
+            include: {
+                photos: true,
+                deals: true
+            }
+        });
+
+        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
+        res.status(200).json(transformedBusinesses);
+    } catch (error) {
+        logger.error({ err: error }, "Error fetching businesses by category");
+        res.status(500).json({ message: "Error fetching businesses by category." });
+    }
+};
+
+// Get business statistics
 export const getBusinessStats = async (req: Request, res: Response): Promise<void> => {
     try {
         const totalBusinesses = await prisma.business.count();
-        const totalBars = await prisma.business.count({ where: { isBar: true } });
-        const totalRestaurants = await prisma.business.count({ where: { isRestaurant: true } });
-        
         const businessesWithDeals = await prisma.business.count({
-            where: {
-                deals: {
-                    some: { isActive: true }
-                }
-            }
+            where: { deals: { some: {} } }
         });
-
         const businessesWithPhotos = await prisma.business.count({
-            where: {
-                photos: {
-                    some: {}
-                }
-            }
+            where: { photos: { some: {} } }
+        });
+        
+        const bars = await prisma.business.count({
+            where: { isBar: true }
+        });
+        
+        const restaurants = await prisma.business.count({
+            where: { isRestaurant: true }
         });
 
         const averageRating = await prisma.business.aggregate({
-            _avg: {
-                ratingOverall: true
-            }
+            _avg: { ratingOverall: true }
         });
 
-        const sourceBreakdown = {
-            google: await prisma.business.count({ 
-                where: { 
-                    placeId: { 
-                        not: null 
-                    } 
-                } 
-            }),
-            yelp: await prisma.business.count({ 
-                where: { 
-                    yelpId: { 
-                        not: null 
-                    } 
-                } 
-            }),
-            manual: await prisma.business.count({ 
-                where: { 
-                    AND: [
-                        { placeId: null },
-                        { yelpId: null }
-                    ]
-                }
-            })
-        };
+        const sourceBreakdown = await prisma.business.groupBy({
+            by: ["source"],
+            _count: { source: true }
+        });
 
-        const costReport = await cloudflareS3Service.getCostReport();
-
-        res.json({
+        res.status(200).json({
             totalBusinesses,
             breakdown: {
-                bars: totalBars,
-                restaurants: totalRestaurants,
+                bars,
+                restaurants,
                 withDeals: businessesWithDeals,
                 withPhotos: businessesWithPhotos
             },
-            dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
-            photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
+            dealCoverage: totalBusinesses > 0 ? 
+                (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
+            photoCoverage: totalBusinesses > 0 ? 
+                (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
             averageRating: averageRating._avg.ratingOverall || 0,
-            sources: sourceBreakdown,
-            costInfo: {
-                currentSpent: costReport.currentMonth.total,
-                remainingBudget: costReport.remainingBudget,
-                emergencyMode: costReport.emergencyMode,
-                projectedMonthly: costReport.projectedMonthly
-            },
+            sources: sourceBreakdown.reduce((acc, item) => {
+                const sourceValue = item['source'];
+                if (typeof sourceValue === 'string') {
+                    acc[sourceValue.toLowerCase()] = item._count?.source ?? 0;
+                } else if (typeof sourceValue === 'boolean' && sourceValue === true) {
+                    acc['unknown'] = item._count?.source ?? 0;
+                }
+                return acc;
+            }, {} as Record<string, number>),
             generatedAt: new Date().toISOString()
         });
     } catch (error) {
@@ -504,7 +278,56 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
     }
 };
 
-// Add other CRUD operations here...
+// Get businesses with active deals
+export const getBusinessesWithActiveDeals = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const businesses = await prisma.business.findMany({
+            where: {
+                deals: {
+                    some: {}
+                }
+            },
+            include: {
+                photos: true,
+                deals: true
+            }
+        });
+
+        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
+        res.status(200).json(transformedBusinesses);
+    } catch (error) {
+        logger.error({ err: error }, "Error fetching businesses with deals");
+        res.status(500).json({ message: "Error fetching businesses with deals." });
+    }
+};
+
+// Get business stats for deals
+export const getBusinessStatsForDeals = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const totalBusinesses = await prisma.business.count();
+        const businessesWithDeals = await prisma.business.count({
+            where: { deals: { some: {} } }
+        });
+        const totalActiveDeals = await prisma.deal.count();
+
+        res.status(200).json({
+            totalBusinesses,
+            businessesWithDeals,
+            businessesWithoutDeals: totalBusinesses - businessesWithDeals,
+            dealCoverage: totalBusinesses > 0 ? 
+                (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
+            totalActiveDeals,
+            averageDealsPerBusiness: businessesWithDeals > 0 ? 
+                (totalActiveDeals / businessesWithDeals).toFixed(1) : 0,
+            note: "Deal processing is currently operational"
+        });
+    } catch (error) {
+        logger.error({ err: error }, 'Error fetching deal stats');
+        res.status(500).json({ message: 'Error fetching deal statistics' });
+    }
+};
+
+// Create one business
 export const createBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
         const business = await createBusinessService(req.body);
@@ -519,6 +342,7 @@ export const createBusiness = async (req: Request, res: Response): Promise<void>
     }
 };
 
+// Create many businesses
 export const createManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
         const businesses = await createManyBusinessService(req.body);
@@ -533,9 +357,17 @@ export const createManyBusinesses = async (req: Request, res: Response): Promise
     }
 };
 
+// Update one business
 export const updateBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
-        const updatedBusiness = await updateOneBusinessService(req.body);
+        const { id } = req.params;
+        
+        if (!id) {
+            res.status(400).json({ message: "Business ID is required." });
+            return;
+        }
+
+        const updatedBusiness = await updateOneBusinessService({ id }, req.body);
         if (!updatedBusiness) {
             res.status(404).json({ message: "Business not updated." });
             return;
@@ -547,9 +379,17 @@ export const updateBusiness = async (req: Request, res: Response): Promise<void>
     }
 };
 
+// Update many businesses
 export const updateManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
-        const updatedBusinesses = await updateManyBusinessService(req.body);
+        const { businessIds, updateData } = req.body;
+        
+        if (!businessIds || !Array.isArray(businessIds) || businessIds.length === 0) {
+            res.status(400).json({ message: "Business IDs array is required." });
+            return;
+        }
+
+        const updatedBusinesses = await updateManyBusinessService(businessIds, updateData);
         if (!updatedBusinesses) {
             res.status(404).json({ message: "Businesses not updated." });
             return;
@@ -561,94 +401,46 @@ export const updateManyBusinesses = async (req: Request, res: Response): Promise
     }
 };
 
+// Delete one business
 export const deleteBusiness = async (req: Request, res: Response): Promise<void> => {
     try {
-        const deletedBusiness = await deleteOneBusinessService(req.body);
+        const { id } = req.params;
+        
+        if (!id) {
+            res.status(400).json({ message: "Business ID is required." });
+            return;
+        }
+
+        const deletedBusiness = await deleteOneBusinessService({ id });
         if (!deletedBusiness) {
             res.status(404).json({ message: "Business not deleted." });
             return;
         }
-        res.status(204).json(deletedBusiness);
+        res.status(204).send();
     } catch (error) {
         logger.error({ err: error }, "Error deleting business");
         res.status(500).json({ message: "Error deleting business." });
     }
 };
 
+// Delete many businesses
 export const deleteManyBusinesses = async (req: Request, res: Response): Promise<void> => {
     try {
-        const deletedBusinesses = await deleteManyBusinessService(req.body);
+        const { businessIds } = req.body;
+        
+        if (!businessIds || !Array.isArray(businessIds) || businessIds.length === 0) {
+            res.status(400).json({ message: "Business IDs array is required." });
+            return;
+        }
+
+        const deletedBusinesses = await deleteManyBusinessService({ id: { in: businessIds } });
         if (!deletedBusinesses) {
             res.status(404).json({ message: "Businesses not deleted." });
             return;
         }
-        res.status(204).json(deletedBusinesses);
+        res.status(204).send();
     } catch (error) {
         logger.error({ err: error }, "Error deleting businesses");
         res.status(500).json({ message: "Error deleting businesses." });
-    }
-};
-
-export const getBusinessStatsForDeals = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const totalBusinesses = await prisma.business.count();
-        
-        const businessesWithDeals = await prisma.business.count({
-            where: {
-                deals: {
-                    some: { isActive: true }
-                }
-            }
-        });
-
-        const businessesWithPhotos = await prisma.business.count({
-            where: {
-                photos: { some: {} }
-            }
-        });
-
-        const totalActiveDeals = await prisma.deal.count({
-            where: { isActive: true }
-        });
-
-        const dealsByDay = await prisma.deal.groupBy({
-            by: ['dayOfWeek'],
-            where: { isActive: true },
-            _count: true
-        });
-
-        const dealsByDayFormatted = dealsByDay.reduce((acc, item) => {
-            if (item.dayOfWeek !== null) {
-                const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][item.dayOfWeek];
-                acc[dayName] = item._count;
-            } else {
-                acc['All Week'] = item._count;
-            }
-            return acc;
-        }, {} as Record<string, number>);
-
-        const averageRating = await prisma.business.aggregate({
-            _avg: {
-                ratingOverall: true
-            }
-        });
-
-        res.json({
-            totalBusinesses,
-            businessesWithDeals,
-            businessesWithoutDeals: totalBusinesses - businessesWithDeals,
-            businessesWithPhotos,
-            photoCoverage: totalBusinesses > 0 ? (businessesWithPhotos / totalBusinesses * 100).toFixed(1) : 0,
-            dealCoverage: totalBusinesses > 0 ? (businessesWithDeals / totalBusinesses * 100).toFixed(1) : 0,
-            totalActiveDeals,
-            averageDealsPerBusiness: businessesWithDeals > 0 ? (totalActiveDeals / businessesWithDeals).toFixed(1) : 0,
-            averageRating: averageRating._avg.ratingOverall || 0,
-            dealsByDay: dealsByDayFormatted,
-            note: "Deal processing is currently paused - deal counts may be outdated"
-        });
-
-    } catch (error) {
-        logger.error({ err: error }, 'Failed to get business stats');
-        res.status(500).json({ message: 'Error fetching business statistics' });
     }
 };
