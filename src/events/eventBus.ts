@@ -1,8 +1,7 @@
 // src/events/eventBus.ts
 import { EventEmitter } from 'events';
 import { logger } from '../utils/logger/logger';
-import type { BusinessEvent } from '../types/business';
-
+import type { BusinessEvent } from './eventTypes';
 // Create a singleton event emitter
 class EventBus extends EventEmitter {
   private static instance: EventBus;

@@ -1,6 +1,8 @@
 import prisma from '../prismaClient';
 import type { StandardizedBusiness } from '../types/business';
 import { logger } from '../utils/logger/logger';
+import type { BusinessWithRelations } from '../types/business';
+import type { Business, Photo, Deal, SourceBusiness } from '@prisma/client';
 
 // Helper type for search parameters
 interface BusinessSearchParams {
@@ -12,6 +14,12 @@ interface BusinessSearchParams {
   includePhotos?: boolean;
   includeDeals?: boolean;
 }
+
+type BusinessWithAllRelations = Business & {
+  photos: Photo[];
+  deals: Deal[];
+  sourceBusinesses: SourceBusiness[];
+};
 
 // Get business by ID with related data
 export const findBusinessById = async (id: string) => {
@@ -63,7 +71,9 @@ export const findBusinessBySourceId = async (sourceId: string, source: string) =
 };
 
 // Search businesses with optional filters
-export const searchBusinesses = async (params: BusinessSearchParams = {}) => {
+export const searchBusinesses = async (
+  params: BusinessSearchParams = {}
+): Promise<any[]> => {
   try {
     const {
       latitude,
@@ -126,7 +136,7 @@ export const searchBusinesses = async (params: BusinessSearchParams = {}) => {
         return enrichedBusinesses.filter(Boolean);
       }
 
-      return businesses;
+      return businesses as any[];
     }
 
     // Regular search without location filtering

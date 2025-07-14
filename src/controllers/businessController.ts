@@ -243,7 +243,7 @@ export const getBusinessStats = async (req: Request, res: Response): Promise<voi
             _avg: { ratingOverall: true }
         });
 
-        const sourceBreakdown = await prisma.business.groupBy({
+        const sourceBreakdown = await prisma.sourceBusiness.groupBy({
             by: ["source"],
             _count: { source: true }
         });
