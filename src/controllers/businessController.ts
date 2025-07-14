@@ -1,4 +1,3 @@
-// src/controllers/businessController.ts
 import { Request, Response } from 'express';
 import {
     getManyBusinessService, 
@@ -87,6 +86,7 @@ const transformBusinessForFrontend = (business: any) => {
         ratingYelp: business.ratingYelp,
         ratingGoogle: business.ratingGoogle,
         operatingHours: business.operatingHours ? business.operatingHours.join(', ') : null,
+        categories: business.categories || [], // FIXED: Include categories field
         photos: photosWithCDN,
         dealInfo: dealInfo // Frontend expects 'dealInfo', not 'deals'
     };
@@ -207,6 +207,67 @@ export const getManyBusinesses = async (req: Request, res: Response): Promise<vo
     } catch (error) {
         logger.error({ err: error }, "Error fetching businesses");
         res.status(500).json({ message: "Error fetching businesses." });
+    }
+};
+
+export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { category } = req.params;
+        const { isBar, isRestaurant, withDealsOnly = 'false' } = req.query;
+        
+        const whereClause: any = {};
+        
+        if (withDealsOnly === 'true') {
+            whereClause.deals = {
+                some: { isActive: true }
+            };
+        }
+
+        if (isBar === 'true') whereClause.isBar = true;
+        if (isRestaurant === 'true') whereClause.isRestaurant = true;
+
+        // FIXED: Make sure we fetch all necessary fields including categories
+        const businesses = await prisma.business.findMany({
+            where: whereClause,
+            include: {
+                photos: {
+                    where: { mainPhoto: true },
+                    take: 1
+                },
+                deals: {
+                    where: { isActive: true },
+                    orderBy: { startTime: 'asc' }
+                }
+            }
+        });
+
+        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
+
+        // FIXED: Now we can safely filter by categories since they're included in the transform
+        const filtered = transformedBusinesses.filter(business => {
+            // Check if categories exist and filter by category
+            if (!business.categories || !Array.isArray(business.categories)) {
+                return false;
+            }
+            
+            return business.categories.some((cat: string) => 
+                cat.toLowerCase().includes(category.toLowerCase())
+            );
+        });
+
+        res.json({
+            results: filtered,
+            count: filtered.length,
+            category,
+            filters: { 
+                isBar, 
+                isRestaurant, 
+                withDealsOnly: withDealsOnly === 'true'
+            }
+        });
+    } catch (error) {
+        logger.error({ err: error }, 'Error fetching businesses by category');
+        res.status(500).json({ message: 'Error fetching businesses by category' });
     }
 };
 
@@ -359,60 +420,6 @@ export const searchBusinessesByLocation = async (req: Request, res: Response): P
     } catch (error) {
         logger.error({ err: error }, 'Error searching businesses by location');
         res.status(500).json({ message: 'Error searching businesses by location' });
-    }
-};
-
-export const getBusinessesByCategory = async (req: Request, res: Response): Promise<void> => {
-    try {
-        const { category } = req.params;
-        const { isBar, isRestaurant, withDealsOnly = 'false' } = req.query;
-        
-        const whereClause: any = {};
-        
-        if (withDealsOnly === 'true') {
-            whereClause.deals = {
-                some: { isActive: true }
-            };
-        }
-
-        if (isBar === 'true') whereClause.isBar = true;
-        if (isRestaurant === 'true') whereClause.isRestaurant = true;
-
-        const businesses = await prisma.business.findMany({
-            where: whereClause,
-            include: {
-                photos: {
-                    where: { mainPhoto: true },
-                    take: 1
-                },
-                deals: {
-                    where: { isActive: true },
-                    orderBy: { startTime: 'asc' }
-                }
-            }
-        });
-
-        const transformedBusinesses = businesses.map(transformBusinessForFrontend);
-
-        const filtered = transformedBusinesses.filter(business => {
-            return business.categories?.some((cat: string) => 
-                cat.toLowerCase().includes(category.toLowerCase())
-            );
-        });
-
-        res.json({
-            results: filtered,
-            count: filtered.length,
-            category,
-            filters: { 
-                isBar, 
-                isRestaurant, 
-                withDealsOnly: withDealsOnly === 'true'
-            }
-        });
-    } catch (error) {
-        logger.error({ err: error }, 'Error fetching businesses by category');
-        res.status(500).json({ message: 'Error fetching businesses by category' });
     }
 };
 
