@@ -44,7 +44,7 @@ const createPlacesRequest = (endpoint: string, params: SearchParams) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': API_CONFIG.key,
-        'X-Goog-FieldMask': 'places.*'
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.priceLevel,places.types,places.nationalPhoneNumber,places.websiteUri,places.photos'
       },
       data: {
         locationRestriction: {
@@ -88,7 +88,7 @@ export const fetchNearbyBusinesses = async (location: Location) => {
           'pub',
           'restaurant',
           'wine_bar'],
-        pagetoken
+        pagetoken,
       });
 
       const response = await axios({

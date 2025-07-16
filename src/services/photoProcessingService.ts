@@ -196,6 +196,16 @@ const processBusinessPhotos = async (businessId: string): Promise<void> => {
     }
 
     const rawData = googleSource.rawData as any;
+
+  logger.info({
+  businessId,
+  businessName: business.name,
+  rawDataExists: !!rawData,
+  rawDataKeys: rawData ? Object.keys(rawData) : [],
+  hasPhotos: !!(rawData?.photos),
+  fullRawData: JSON.stringify(rawData, null, 2) // TEMPORARY: to see full structure
+}, 'DEBUG: Google raw data analysis');
+
     const photos = rawData?.photos;
 
     if (!photos || !Array.isArray(photos) || photos.length === 0) {
