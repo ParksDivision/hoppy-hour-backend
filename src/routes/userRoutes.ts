@@ -1,31 +1,18 @@
 import { Router } from 'express';
-import { 
-  getOneUser,
-  getManyUsers,
+import {
   createUser,
-  createManyUsers,
+  getUsers,
+  getUserById,
   updateUser,
-  updateManyUsers,
   deleteUser,
-  deleteManyUsers
 } from '../controllers/userController';
 
-const userRoutes = Router();
+const router = Router();
 
-// GET routes
-userRoutes.get('/:id', getOneUser);
-userRoutes.get('/', getManyUsers);
+router.post('/', createUser);
+router.get('/', getUsers);
+router.get('/:id', getUserById);
+router.put('/:id', updateUser);
+router.delete('/:id', deleteUser);
 
-// POST routes - Fixed duplicate route conflict
-userRoutes.post('/many', createManyUsers);  // Specific route first
-userRoutes.post('/', createUser);           // General route second
-
-// PUT routes
-userRoutes.put('/update/:id', updateUser);
-userRoutes.put('/update', updateManyUsers);
-
-// DELETE routes
-userRoutes.delete('/delete/:id', deleteUser);
-userRoutes.delete('/delete', deleteManyUsers);
-
-export default userRoutes;
+export { router as userRoutes };
