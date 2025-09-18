@@ -7,12 +7,94 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model GoogleRawBusiness {
+  id           String    @id @default(uuid())
+  name         String?   @db.VarChar(75)
+  addressFull  Json?     @map("address_full")
+  location     Json?     @map("location")
+  primaryPhone String?   @map("primary_phone") @db.VarChar(30)
+  uri          String?   @db.VarChar(150)
+  data         Json?
+  createdOn    DateTime? @map("created_on") @db.Timestamp()
+  createdBy    String?   @map("created_by") @db.VarChar(50)
+  updatedOn    DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy    String?   @map("updated_by") @db.VarChar(50)
+
+  // Relations with cascade delete
+  businessesAustin BusinessAustin[]
+  pendingDeals     PendingDeal[]
+
+  @@map("google_raw_business")
+}
+
+model YelpRawBusiness {
+  id           String    @id @default(uuid())
+  name         String?   @db.VarChar(75)
+  addressFull  Json?     @map("address_full")
+  primaryPhone String?   @map("primary_phone") @db.VarChar(30)
+  uri          String?   @db.VarChar(150)
+  data         Json?
+  createdOn    DateTime? @map("created_on") @db.Timestamp()
+  createdBy    String?   @map("created_by") @db.VarChar(50)
+  updatedOn    DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy    String?   @map("updated_by") @db.VarChar(50)
+
+  // Relations with cascade delete
+  businessesAustin BusinessAustin[]
+  pendingDeals     PendingDeal[]
+
+  @@map("yelp_raw_business")
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String    @id @default(uuid())
+  email     String?   @db.VarChar(75)
+  role      String?   @db.VarChar(50)
+  createdOn DateTime? @map("created_on") @db.Timestamp()
+  createdBy String?   @map("created_by") @db.VarChar(50)
+  updatedOn DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy String?   @map("updated_by") @db.VarChar(50)
 
   @@map("users")
+}
+
+model BusinessAustin {
+  id             String             @id @default(uuid())
+  googlePlaceId  String?            @map("google_place_id")
+  yelpId         String?            @map("yelp_id")
+  name           String?            @db.VarChar(75)
+  addressFull    Json?              @map("address_full")
+  primaryPhone   String?            @map("primary_phone") @db.VarChar(30)
+  uri            String?            @db.VarChar(150)
+  createdOn      DateTime?          @map("created_on") @db.Timestamp()
+  createdBy      String?            @map("created_by") @db.VarChar(50)
+  updatedOn      DateTime?          @map("updated_on") @db.Timestamp()
+  updatedBy      String?            @map("updated_by") @db.VarChar(50)
+
+  // Relations with cascade delete
+  googleRawBusiness GoogleRawBusiness? @relation(fields: [googlePlaceId], references: [id], onDelete: Cascade)
+  yelpRawBusiness   YelpRawBusiness?   @relation(fields: [yelpId], references: [id], onDelete: Cascade)
+
+  @@map("businesses_austin")
+}
+
+model PendingDeal {
+  id             String             @id @default(uuid())
+  googlePlaceId  String?            @map("google_place_id")
+  yelpId         String?            @map("yelp_id")
+  dealType       String?            @map("deal_type") @db.VarChar(30)
+  name           String?            @db.VarChar(75)
+  addressFull    Json?              @map("address_full")
+  primaryPhone   String?            @map("primary_phone") @db.VarChar(30)
+  uri            String?            @db.VarChar(150)
+  createdOn      DateTime?          @map("created_on") @db.Timestamp()
+  createdBy      String?            @map("created_by") @db.VarChar(50)
+  updatedOn      DateTime?          @map("updated_on") @db.Timestamp()
+  updatedBy      String?            @map("updated_by") @db.VarChar(50)
+
+  // Relations with cascade delete
+  googleRawBusiness GoogleRawBusiness? @relation(fields: [googlePlaceId], references: [id], onDelete: Cascade)
+  yelpRawBusiness   YelpRawBusiness?   @relation(fields: [yelpId], references: [id], onDelete: Cascade)
+
+  @@map("pending_deals")
 }
