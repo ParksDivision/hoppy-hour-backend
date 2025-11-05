@@ -3,7 +3,7 @@ import prisma from '../utils/database';
 
 export const createUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, name } = req.body;
+    const { email, role } = req.body;
 
     if (!email) {
       res.status(400).json({ error: 'Email is required' });
@@ -11,7 +11,14 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
     }
 
     const user = await prisma.user.create({
-      data: { email, name },
+      data: {
+        email,
+        role: role ?? 'user',
+        createdOn: new Date(),
+        createdBy: 'system',
+        updatedOn: new Date(),
+        updatedBy: 'system',
+      },
     });
 
     res.status(201).json(user);
@@ -29,7 +36,7 @@ export const createUser = async (req: Request, res: Response): Promise<void> => 
 export const getUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdOn: 'desc' },
     });
     res.json(users);
   } catch (error: unknown) {
@@ -68,7 +75,7 @@ export const getUserById = async (req: Request, res: Response): Promise<void> =>
 export const updateUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { email, name } = req.body;
+    const { email, role } = req.body;
 
     if (!id) {
       res.status(400).json({ error: 'User ID is required' });
@@ -77,7 +84,12 @@ export const updateUser = async (req: Request, res: Response): Promise<void> => 
 
     const user = await prisma.user.update({
       where: { id },
-      data: { email, name },
+      data: {
+        email,
+        role,
+        updatedOn: new Date(),
+        updatedBy: 'system',
+      },
     });
 
     res.json(user);

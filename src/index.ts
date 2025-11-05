@@ -46,13 +46,13 @@ app.get('/health', (req, res) => {
 // API Routes - Import BEFORE generating OpenAPI
 // ============================================
 import { userRoutes } from './routes/userRoutes';
+import { googleRoutes } from './routes/googleRoutes';
 // import { businessRoutes } from './routes/businessRoutes';
-// import { collectionRoutes } from './routes/collectionRoutes';
 
 // Mount routes
 app.use('/api/users', userRoutes);
+app.use('/api/data-collection/google', googleRoutes);
 // app.use('/api/businesses', businessRoutes);
-// app.use('/api/collection', collectionRoutes);
 
 // ============================================
 // OpenAPI/Swagger Documentation

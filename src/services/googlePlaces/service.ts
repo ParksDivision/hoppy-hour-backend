@@ -215,17 +215,17 @@ export const transformPlaceToBusinessData = (place: Place): GoogleRawBusinessDat
 
     // extract formatted address
     addressFull: place.formattedAddress
-      ? ({
+      ? {
           formattedAddress: place.formattedAddress,
-        } as unknown as JSON)
+        }
       : null,
 
     // separate location data
     location: place.location
-      ? ({
+      ? {
           latitude: place.location.latitude,
           longitude: place.location.longitude,
-        } as unknown as JSON)
+        }
       : null,
 
     // extract phone and uri
@@ -236,6 +236,6 @@ export const transformPlaceToBusinessData = (place: Place): GoogleRawBusinessDat
     data: {
       place, // Complete Google Places object
       lastUpdated: new Date().toISOString(), // When we fetched this data
-    } as unknown as JSON,
+    },
   };
 };

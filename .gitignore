@@ -21,6 +21,10 @@ Thumbs.db
 *.tmp
 *.temp
 
+# Redis (local installation)
+redis/
+redis.zip
+
 # Deployment and CI/CD (local development only)
 .github/
 docker-compose.yml

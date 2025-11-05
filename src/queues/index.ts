@@ -2,6 +2,10 @@ import { Queue, Worker } from 'bullmq';
 import { createRedisConnection } from '../config/redis';
 import { logger } from '../utils/logger';
 
+// Import Google Places queue and worker
+import { googlePlacesQueue } from './jobs/googlePlacesJobs';
+import { googlePlacesWorker } from './workers/googlePlacesWorker';
+
 const redisConnection = createRedisConnection();
 
 // Create a simple queue
@@ -35,9 +39,14 @@ emailWorker.on('failed', (job, err) => {
   logger.error(`Job ${job?.id} has failed with error: ${err.message}`);
 });
 
+// Export Google Places queue for use in controllers
+export { googlePlacesQueue, googlePlacesWorker };
+
 export const shutdown = async () => {
   logger.info('Shutting down queues and workers...');
   await emailWorker.close();
   await emailQueue.close();
+  await googlePlacesWorker.close();
+  await googlePlacesQueue.close();
   redisConnection.disconnect();
 };
