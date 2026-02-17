@@ -11,6 +11,7 @@ export interface GooglePlacesSearchOptions {
 
 // Database structure matching Prisma GoogleRawBusiness model
 export interface GoogleRawBusinessData {
+  googlePlaceId: string | null;
   name: string | null;
   addressFull: Prisma.JsonValue | null;
   location: Prisma.JsonValue | null;

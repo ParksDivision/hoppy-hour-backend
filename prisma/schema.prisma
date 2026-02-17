@@ -8,17 +8,18 @@ datasource db {
 }
 
 model GoogleRawBusiness {
-  id           String    @id @default(uuid())
-  name         String?   @db.VarChar(75)
-  addressFull  Json?     @map("address_full")
-  location     Json?     @map("location")
-  primaryPhone String?   @map("primary_phone") @db.VarChar(30)
-  uri          String?   @db.VarChar(150)
-  data         Json?
-  createdOn    DateTime? @map("created_on") @db.Timestamp()
-  createdBy    String?   @map("created_by") @db.VarChar(50)
-  updatedOn    DateTime? @map("updated_on") @db.Timestamp()
-  updatedBy    String?   @map("updated_by") @db.VarChar(50)
+  id            String    @id @default(uuid())
+  googlePlaceId String?   @unique @map("google_place_id") @db.VarChar(255)
+  name          String?   @db.VarChar(255)
+  addressFull   Json?     @map("address_full")
+  location      Json?     @map("location")
+  primaryPhone  String?   @map("primary_phone") @db.VarChar(50)
+  uri           String?   @db.VarChar(500)
+  data          Json?
+  createdOn     DateTime? @map("created_on") @db.Timestamp()
+  createdBy     String?   @map("created_by") @db.VarChar(50)
+  updatedOn     DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy     String?   @map("updated_by") @db.VarChar(50)
 
   // Relations with cascade delete
   businessesAustin BusinessAustin[]

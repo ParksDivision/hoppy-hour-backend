@@ -7,11 +7,11 @@ const redisConfig = {
   ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }),
   db: parseInt(process.env.REDIS_DB ?? '0'),
   retryDelayOnFailover: 100,
-  maxRetriesPerRequest: 3,
-  lazyConnect: true,
+  maxRetriesPerRequest: null, // Required for BullMQ
+  lazyConnect: false, // Connect immediately
   keepAlive: 30000,
-  connectTimeout: 10000,
-  commandTimeout: 5000,
+  connectTimeout: 5000, // Reduced from 10000
+  commandTimeout: 2000, // Reduced from 5000
 };
 
 export const redis = new Redis(redisConfig);

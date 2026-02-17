@@ -15,7 +15,7 @@ import {
   transformPlaceToBusinessData,
 } from '../../services/googlePlaces/service';
 import {
-  bulkCreateGoogleRawBusinesses,
+  bulkUpsertGoogleRawBusinesses,
   createGoogleRawBusiness,
 } from '../../repositories/googleRawBusinessRepository';
 import type { SearchNearbyJobData, PlaceDetailsJobData } from '../jobs/googlePlacesJobs';
@@ -23,6 +23,7 @@ import type { SearchNearbyJobData, PlaceDetailsJobData } from '../jobs/googlePla
 /**
  * Process searchNearby jobs
  * Fetches nearby places from Google Places API and saves to database
+ * Handles pagination to retrieve all available results
  */
 const handleSearchNearby = async (job: Job<SearchNearbyJobData>) => {
   const { latitude, longitude, options, requestedBy = 'system' } = job.data;
@@ -33,29 +34,79 @@ const handleSearchNearby = async (job: Job<SearchNearbyJobData>) => {
       latitude,
       longitude,
     },
-    'Processing searchNearby job'
+    'Processing searchNearby job with pagination'
   );
 
   // Update job progress
   await job.updateProgress(10);
 
-  // Call Google Places API
-  const response = await searchNearbyPlaces(latitude, longitude, options);
+  // Accumulate all places from all pages
+  const allPlaces = [];
+  let currentPageToken: string | undefined = undefined;
+  let pageCount = 0;
 
-  await job.updateProgress(50);
+  // Loop through all pages until no more nextPageToken is returned
+  do {
+    pageCount++;
 
-  if (!response.places || response.places.length === 0) {
+    logger.info(
+      {
+        jobId: job.id,
+        pageCount,
+        hasPageToken: !!currentPageToken,
+      },
+      'Fetching page of results'
+    );
+
+    // Call Google Places API with current page token
+    const response = await searchNearbyPlaces(latitude, longitude, options, currentPageToken);
+
+    // Add places from this page to our accumulator
+    if (response.places && response.places.length > 0) {
+      allPlaces.push(...response.places);
+      logger.info(
+        {
+          jobId: job.id,
+          pageCount,
+          placesInPage: response.places.length,
+          totalPlacesSoFar: allPlaces.length,
+        },
+        'Page fetched successfully'
+      );
+    }
+
+    // Get next page token
+    currentPageToken = response.nextPageToken;
+
+    // Update progress based on page count (estimate progress)
+    const progress = Math.min(10 + (pageCount * 15), 70);
+    await job.updateProgress(progress);
+
+  } while (currentPageToken);
+
+  logger.info(
+    {
+      jobId: job.id,
+      totalPages: pageCount,
+      totalPlaces: allPlaces.length,
+    },
+    'All pages fetched'
+  );
+
+  await job.updateProgress(75);
+
+  if (allPlaces.length === 0) {
     logger.warn({ jobId: job.id, latitude, longitude }, 'No places found in search');
     return { success: true, count: 0, message: 'No places found' };
   }
 
   // Transform all places to database format
-  const businesses = response.places.map((place) => transformPlaceToBusinessData(place));
+  const businesses = allPlaces.map((place) => transformPlaceToBusinessData(place));
 
-  await job.updateProgress(75);
+  await job.updateProgress(85);
 
-  // Bulk insert into database
-  const result = await bulkCreateGoogleRawBusinesses(businesses, requestedBy);
+  // Bulk upsert into database (update existing, create new)
+  const result = await bulkUpsertGoogleRawBusinesses(businesses, requestedBy);
 
   await job.updateProgress(100);
 
@@ -64,16 +115,18 @@ const handleSearchNearby = async (job: Job<SearchNearbyJobData>) => {
       jobId: job.id,
       latitude,
       longitude,
-      placesFound: response.places.length,
+      totalPages: pageCount,
+      placesFound: allPlaces.length,
       savedCount: result.count,
     },
-    'Completed searchNearby job'
+    'Completed searchNearby job with pagination'
   );
 
   return {
     success: true,
     count: result.count,
-    totalPlaces: response.places.length,
+    totalPlaces: allPlaces.length,
+    totalPages: pageCount,
     latitude,
     longitude,
   };

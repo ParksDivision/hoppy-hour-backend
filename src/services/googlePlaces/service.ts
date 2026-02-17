@@ -35,12 +35,14 @@ import type {
  * @param latitude - Center point latitude for search
  * @param longitude - Center point longitude for search
  * @param options - Optional search configuration (radius, types, etc.)
+ * @param pageToken - Optional token for fetching next page of results
  * @returns Promise resolving to validated places data
  */
 export const searchNearbyPlaces = async (
   latitude: number,
   longitude: number,
-  options: GooglePlacesSearchOptions = {}
+  options: GooglePlacesSearchOptions = {},
+  pageToken?: string
 ): Promise<NearbySearchResponse> => {
   try {
     // define options
@@ -71,6 +73,9 @@ export const searchNearbyPlaces = async (
     }
     if (excludedTypes && excludedTypes.length > 0) {
       requestBody.excludedTypes = excludedTypes;
+    }
+    if (pageToken) {
+      requestBody.pageToken = pageToken;
     }
 
     // validate request body
@@ -210,6 +215,9 @@ export const checkHealth = async (): Promise<boolean> => {
  */
 export const transformPlaceToBusinessData = (place: Place): GoogleRawBusinessData => {
   return {
+    // extract Google Place ID for deduplication
+    googlePlaceId: place.id ?? null,
+
     // extract name
     name: place.displayName?.text ?? null,
 

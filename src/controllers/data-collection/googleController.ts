@@ -14,6 +14,7 @@ import {
   countGoogleRawBusinesses,
 } from '../../repositories/googleRawBusinessRepository';
 import { logger } from '../../utils/logger';
+import { getCityCoordinates, getAvailableCities } from '../../config/cityCoordinates';
 
 /**
  * POST /api/data-collection/google/search
@@ -229,5 +230,70 @@ export const getGoogleQueueStats = async (req: Request, res: Response): Promise<
   } catch (error) {
     logger.error({ error }, 'Failed to fetch queue stats');
     res.status(500).json({ error: 'Failed to fetch queue statistics' });
+  }
+};
+
+/**
+ * POST /api/data-collection/google/search/city
+ * Trigger a comprehensive city-wide search using predefined neighborhood coordinates
+ */
+export const searchCityBusinesses = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { city, includedTypes, excludedTypes } = req.body;
+
+    if (!city || typeof city !== 'string') {
+      res.status(400).json({ error: 'City name is required' });
+      return;
+    }
+
+    // Get coordinates for the city
+    const coordinates = getCityCoordinates(city);
+
+    if (!coordinates || coordinates.length === 0) {
+      const availableCities = getAvailableCities();
+      res.status(404).json({
+        error: `City '${city}' not found`,
+        availableCities,
+        hint: `Available cities: ${availableCities.join(', ')}`,
+      });
+      return;
+    }
+
+    // Transform coordinates into bulk search jobs
+    const locations = coordinates.map((coord) => ({
+      latitude: coord.latitude,
+      longitude: coord.longitude,
+      options: {
+        radius: coord.radius,
+        includedTypes,
+        excludedTypes,
+      },
+    }));
+
+    // Queue all searches
+    const jobs = await addBulkSearchJobs(locations);
+
+    logger.info(
+      {
+        city,
+        coordinateCount: coordinates.length,
+        jobCount: jobs.length,
+        ip: req.ip,
+      },
+      `Queued city-wide search for ${city}`
+    );
+
+    res.status(202).json({
+      message: `City-wide search for ${city} queued successfully`,
+      city,
+      jobIds: jobs.map((job) => job.id),
+      status: 'queued',
+      searchPoints: coordinates.length,
+      expectedJobs: jobs.length,
+      note: 'Deduplication will automatically handle overlapping results',
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to queue city search');
+    res.status(500).json({ error: 'Failed to queue city search' });
   }
 };

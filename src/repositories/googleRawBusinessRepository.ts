@@ -24,6 +24,7 @@ export const createGoogleRawBusiness = async (
   try {
     const business = await prisma.googleRawBusiness.create({
       data: {
+        googlePlaceId: data.googlePlaceId,
         name: data.name,
         addressFull: data.addressFull ?? Prisma.JsonNull,
         location: data.location ?? Prisma.JsonNull,
@@ -53,37 +54,52 @@ export const createGoogleRawBusiness = async (
  * @param createdBy - User/system identifier for audit trail
  * @returns Count of created records
  */
-export const bulkCreateGoogleRawBusinesses = async (
+export const bulkUpsertGoogleRawBusinesses = async (
   businesses: GoogleRawBusinessData[],
   createdBy: string = 'system'
 ) => {
   try {
     const now = new Date();
 
-    const result = await prisma.googleRawBusiness.createMany({
-      data: businesses.map((business) => ({
-        name: business.name,
-        addressFull: business.addressFull ?? Prisma.JsonNull,
-        location: business.location ?? Prisma.JsonNull,
-        primaryPhone: business.primaryPhone,
-        uri: business.uri,
-        data: business.data ?? Prisma.JsonNull,
-        createdOn: now,
-        createdBy,
-        updatedOn: now,
-        updatedBy: createdBy,
-      })),
-      skipDuplicates: true, // Skip if duplicate unique constraints
-    });
-
-    logger.info(
-      { count: result.count, total: businesses.length },
-      'Bulk created Google raw businesses'
+    const results = await prisma.$transaction(
+      businesses.map((business) =>
+        prisma.googleRawBusiness.upsert({
+          where: { googlePlaceId: business.googlePlaceId! },
+          create: {
+            googlePlaceId: business.googlePlaceId,
+            name: business.name,
+            addressFull: business.addressFull ?? Prisma.JsonNull,
+            location: business.location ?? Prisma.JsonNull,
+            primaryPhone: business.primaryPhone,
+            uri: business.uri,
+            data: business.data ?? Prisma.JsonNull,
+            createdOn: now,
+            createdBy,
+            updatedOn: now,
+            updatedBy: createdBy,
+          },
+          update: {
+            name: business.name,
+            addressFull: business.addressFull ?? Prisma.JsonNull,
+            location: business.location ?? Prisma.JsonNull,
+            primaryPhone: business.primaryPhone,
+            uri: business.uri,
+            data: business.data ?? Prisma.JsonNull,
+            updatedOn: now,
+            updatedBy: createdBy,
+          },
+        })
+      )
     );
 
-    return result;
+    logger.info(
+      { count: results.length, total: businesses.length },
+      'Bulk upserted Google raw businesses'
+    );
+
+    return { count: results.length };
   } catch (error) {
-    logger.error({ error, count: businesses.length }, 'Failed to bulk create Google raw businesses');
+    logger.error({ error, count: businesses.length }, 'Failed to bulk upsert Google raw businesses');
     throw error;
   }
 };

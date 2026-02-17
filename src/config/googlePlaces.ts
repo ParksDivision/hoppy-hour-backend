@@ -11,7 +11,7 @@ export const googlePlacesConfig = {
   // Default search parameters
   defaults: {
     radius: 1694, // 10 miles
-    maxResultCount: 500,
+    maxResultCount: 20, // Google Places API maximum per request
     includedTypes: [
       'bar',
       'pub',

@@ -6,6 +6,7 @@ import { Router } from 'express';
 import {
   searchNearbyPlaces,
   bulkSearchNearbyPlaces,
+  searchCityBusinesses,
   getCollectedBusinesses,
   getCollectedBusinessById,
   searchCollectedBusinessesByName,
@@ -17,6 +18,7 @@ const router = Router();
 // Search endpoints (trigger background jobs)
 router.post('/search', searchNearbyPlaces);
 router.post('/search/bulk', bulkSearchNearbyPlaces);
+router.post('/search/city', searchCityBusinesses);
 
 // Query endpoints
 router.get('/businesses', getCollectedBusinesses);

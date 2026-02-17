@@ -248,6 +248,10 @@ export const NearbySearchRequestSchema = z
       description: 'Region code for result formatting',
       example: 'US',
     }),
+    pageToken: z.string().optional().openapi({
+      description: 'Token for fetching next page of results',
+      example: 'AfLeUgMY_n3uH...',
+    }),
   })
   .openapi({
     title: 'NearbySearchRequest',
@@ -257,6 +261,10 @@ export const NearbySearchRequestSchema = z
 export const NearbySearchResponseSchema = z
   .object({
     places: z.array(PlaceSchema),
+    nextPageToken: z.string().optional().openapi({
+      description: 'Token for fetching next page of results',
+      example: 'AfLeUgMY_n3uH...',
+    }),
   })
   .openapi({
     title: 'NearbySearchResponse',
