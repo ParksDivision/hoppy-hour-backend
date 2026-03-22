@@ -48,12 +48,14 @@ app.get('/health', (req, res) => {
 import { userRoutes } from './routes/userRoutes';
 import { googleRoutes } from './routes/googleRoutes';
 import { socialScraperRoutes } from './routes/socialScraperRoutes';
+import { dealAnalyzerRoutes } from './routes/dealAnalyzerRoutes';
 // import { businessRoutes } from './routes/businessRoutes';
 
 // Mount routes
 app.use('/api/users', userRoutes);
 app.use('/api/data-collection/google', googleRoutes);
 app.use('/api/data-collection/social', socialScraperRoutes);
+app.use('/api/data-collection/deals', dealAnalyzerRoutes);
 // app.use('/api/businesses', businessRoutes);
 
 // ============================================
@@ -213,5 +215,3 @@ const server = app.listen(port, () => {
 void initializeServer();
 
 export default app;
-
-

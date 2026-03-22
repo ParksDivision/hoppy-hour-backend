@@ -79,9 +79,8 @@ const handleSearchNearby = async (job: Job<SearchNearbyJobData>) => {
     currentPageToken = response.nextPageToken;
 
     // Update progress based on page count (estimate progress)
-    const progress = Math.min(10 + (pageCount * 15), 70);
+    const progress = Math.min(10 + pageCount * 15, 70);
     await job.updateProgress(progress);
-
   } while (currentPageToken);
 
   logger.info(

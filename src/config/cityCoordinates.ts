@@ -30,12 +30,17 @@ export const austinCoordinates: SearchCoordinate[] = [
   { name: 'Downtown - West 6th', latitude: 30.2696, longitude: -97.7506, radius: 1000 },
   { name: 'Downtown - Congress Avenue', latitude: 30.2747, longitude: -97.7403, radius: 1000 },
   { name: 'Downtown - Warehouse District', latitude: 30.2653, longitude: -97.7486, radius: 1000 },
-  { name: 'Downtown - Red River Cultural District', latitude: 30.2658, longitude: -97.7368, radius: 800 },
+  {
+    name: 'Downtown - Red River Cultural District',
+    latitude: 30.2658,
+    longitude: -97.7368,
+    radius: 800,
+  },
 
   // Central Austin
   { name: 'South Congress (SoCo)', latitude: 30.2471, longitude: -97.7479, radius: 1500 },
   { name: 'South Lamar', latitude: 30.2502, longitude: -97.7681, radius: 1500 },
-  { name: 'Barton Hills', latitude: 30.2587, longitude: -97.7780, radius: 1500 },
+  { name: 'Barton Hills', latitude: 30.2587, longitude: -97.778, radius: 1500 },
   { name: 'Zilker', latitude: 30.2677, longitude: -97.7731, radius: 1500 },
   { name: 'West Campus - UT Area', latitude: 30.2866, longitude: -97.7436, radius: 1200 },
   { name: 'The Drag - Guadalupe', latitude: 30.2864, longitude: -97.7394, radius: 1000 },
@@ -50,7 +55,7 @@ export const austinCoordinates: SearchCoordinate[] = [
 
   // North Austin
   { name: 'Hyde Park', latitude: 30.3045, longitude: -97.7297, radius: 1500 },
-  { name: 'North Loop', latitude: 30.3145, longitude: -97.7260, radius: 1500 },
+  { name: 'North Loop', latitude: 30.3145, longitude: -97.726, radius: 1500 },
   { name: 'Crestview', latitude: 30.3394, longitude: -97.7285, radius: 2000 },
   { name: 'Allandale', latitude: 30.3528, longitude: -97.7402, radius: 2000 },
   { name: 'The Domain', latitude: 30.3965, longitude: -97.7236, radius: 1500 },
@@ -59,13 +64,13 @@ export const austinCoordinates: SearchCoordinate[] = [
   // South Austin
   { name: 'St. Edwards Area', latitude: 30.2303, longitude: -97.7413, radius: 1500 },
   { name: 'Travis Heights', latitude: 30.2434, longitude: -97.7381, radius: 1500 },
-  { name: 'Bouldin Creek', latitude: 30.2520, longitude: -97.7576, radius: 1200 },
-  { name: 'Dawson', latitude: 30.2370, longitude: -97.7565, radius: 1500 },
+  { name: 'Bouldin Creek', latitude: 30.252, longitude: -97.7576, radius: 1200 },
+  { name: 'Dawson', latitude: 30.237, longitude: -97.7565, radius: 1500 },
   { name: 'Sunset Valley', latitude: 30.2312, longitude: -97.8016, radius: 2000 },
   { name: 'Circle C', latitude: 30.2036, longitude: -97.8679, radius: 2000 },
 
   // West Austin
-  { name: 'Clarksville', latitude: 30.2826, longitude: -97.7620, radius: 1200 },
+  { name: 'Clarksville', latitude: 30.2826, longitude: -97.762, radius: 1200 },
   { name: 'Old West Austin', latitude: 30.2804, longitude: -97.7526, radius: 1200 },
   { name: 'Tarrytown', latitude: 30.2962, longitude: -97.7713, radius: 1500 },
   { name: 'Westlake Hills', latitude: 30.2963, longitude: -97.7988, radius: 2000 },
@@ -85,9 +90,9 @@ export const austinCoordinates: SearchCoordinate[] = [
 
   // Northeast Austin
   { name: 'Windsor Park', latitude: 30.3188, longitude: -97.6893, radius: 2000 },
-  { name: 'Georgian Acres', latitude: 30.3405, longitude: -97.6870, radius: 2000 },
+  { name: 'Georgian Acres', latitude: 30.3405, longitude: -97.687, radius: 2000 },
   { name: 'Walnut Creek', latitude: 30.3898, longitude: -97.6888, radius: 2000 },
-  { name: 'Pflugerville Border', latitude: 30.4495, longitude: -97.6740, radius: 2500 },
+  { name: 'Pflugerville Border', latitude: 30.4495, longitude: -97.674, radius: 2500 },
 
   // Airport Area
   { name: 'Airport Boulevard Corridor', latitude: 30.3173, longitude: -97.7074, radius: 1500 },

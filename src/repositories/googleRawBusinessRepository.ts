@@ -99,7 +99,10 @@ export const bulkUpsertGoogleRawBusinesses = async (
 
     return { count: results.length };
   } catch (error) {
-    logger.error({ error, count: businesses.length }, 'Failed to bulk upsert Google raw businesses');
+    logger.error(
+      { error, count: businesses.length },
+      'Failed to bulk upsert Google raw businesses'
+    );
     throw error;
   }
 };
@@ -202,7 +205,8 @@ export const updateGoogleRawBusiness = async (
     if (data.name !== undefined) updateData.name = data.name;
     if (data.primaryPhone !== undefined) updateData.primaryPhone = data.primaryPhone;
     if (data.uri !== undefined) updateData.uri = data.uri;
-    if (data.addressFull !== undefined) updateData.addressFull = data.addressFull ?? Prisma.JsonNull;
+    if (data.addressFull !== undefined)
+      updateData.addressFull = data.addressFull ?? Prisma.JsonNull;
     if (data.location !== undefined) updateData.location = data.location ?? Prisma.JsonNull;
     if (data.data !== undefined) updateData.data = data.data ?? Prisma.JsonNull;
 

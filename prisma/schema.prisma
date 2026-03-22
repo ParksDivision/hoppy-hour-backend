@@ -25,6 +25,7 @@ model GoogleRawBusiness {
   businessesAustin BusinessAustin[]
   pendingDeals     PendingDeal[]
   socialLinks      BusinessSocialLink?
+  dealData         WebsiteDealData[]
 
   @@map("google_raw_business")
 }
@@ -101,6 +102,29 @@ model BusinessAustin {
   yelpRawBusiness   YelpRawBusiness?   @relation(fields: [yelpId], references: [id], onDelete: Cascade)
 
   @@map("businesses_austin")
+}
+
+model WebsiteDealData {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @map("google_raw_business_id")
+  sourceType          String    @map("source_type") @db.VarChar(30)
+  sourceUrl           String?   @map("source_url") @db.VarChar(500)
+  deals               Json?
+  rawAiResponse       Json?     @map("raw_ai_response")
+  aiModel             String?   @map("ai_model") @db.VarChar(50)
+  aiPromptVersion     String?   @map("ai_prompt_version") @db.VarChar(20)
+  analysisStatus      String?   @map("analysis_status") @db.VarChar(20)
+  errorMessage        String?   @map("error_message") @db.VarChar(1000)
+  analyzedAt          DateTime? @map("analyzed_at") @db.Timestamp()
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@unique([googleRawBusinessId, sourceType])
+  @@map("website_deal_data")
 }
 
 model PendingDeal {

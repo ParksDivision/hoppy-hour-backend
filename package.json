@@ -29,6 +29,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@asteasolutions/zod-to-openapi": "^8.1.0",
     "@bull-board/api": "^5.0.0",
     "@bull-board/express": "^5.0.0",

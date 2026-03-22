@@ -10,6 +10,10 @@ import { googlePlacesWorker } from './workers/googlePlacesWorker';
 import { socialScraperQueue } from './jobs/socialScraperJobs';
 import { socialScraperWorker } from './workers/socialScraperWorker';
 
+// Import Deal Analyzer queue and worker
+import { dealAnalyzerQueue } from './jobs/dealAnalyzerJobs';
+import { dealAnalyzerWorker } from './workers/dealAnalyzerWorker';
+
 const redisConnection = createRedisConnection();
 
 // Create a simple queue
@@ -46,6 +50,7 @@ emailWorker.on('failed', (job, err) => {
 // Export queues for use in controllers
 export { googlePlacesQueue, googlePlacesWorker };
 export { socialScraperQueue, socialScraperWorker };
+export { dealAnalyzerQueue, dealAnalyzerWorker };
 
 export const shutdown = async () => {
   logger.info('Shutting down queues and workers...');
@@ -55,5 +60,7 @@ export const shutdown = async () => {
   await googlePlacesQueue.close();
   await socialScraperWorker.close();
   await socialScraperQueue.close();
+  await dealAnalyzerWorker.close();
+  await dealAnalyzerQueue.close();
   redisConnection.disconnect();
 };

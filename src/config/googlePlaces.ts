@@ -29,7 +29,7 @@ export const googlePlacesConfig = {
       'pub',
       'sports_bar',
       'wine_bar',
-      'winery'
+      'winery',
     ],
 
     // Field masks for different detail levels. Standard is the default for initial retrieval

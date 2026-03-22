@@ -6,7 +6,11 @@
  */
 
 import { Request, Response } from 'express';
-import { addSearchNearbyJob, addBulkSearchJobs, getQueueStats } from '../../queues/jobs/googlePlacesJobs';
+import {
+  addSearchNearbyJob,
+  addBulkSearchJobs,
+  getQueueStats,
+} from '../../queues/jobs/googlePlacesJobs';
 import { addCitySearchWithSocialScrapingFlow } from '../../queues/jobs/socialScraperJobs';
 import {
   getAllGoogleRawBusinesses,
@@ -191,7 +195,10 @@ export const getCollectedBusinessById = async (req: Request, res: Response): Pro
  * GET /api/data-collection/google/businesses/search/name
  * Search collected businesses by name
  */
-export const searchCollectedBusinessesByName = async (req: Request, res: Response): Promise<void> => {
+export const searchCollectedBusinessesByName = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const { name } = req.query;
 
@@ -273,11 +280,7 @@ export const searchCityBusinesses = async (req: Request, res: Response): Promise
 
     // If socialScraping is enabled, use FlowProducer to chain search -> scraping
     if (socialScraping) {
-      const flow = await addCitySearchWithSocialScrapingFlow(
-        locations,
-        city,
-        req.ip ?? 'unknown'
-      );
+      const flow = await addCitySearchWithSocialScrapingFlow(locations, city, req.ip ?? 'unknown');
 
       logger.info(
         {
