@@ -103,11 +103,13 @@ export const PhotoSchema = z
       .array(
         z.object({
           displayName: z.string(),
-          uri: z.string().url().optional(),
-          photoUri: z.string().url().optional(),
+          uri: z.string().optional(),
+          photoUri: z.string().optional(),
         })
       )
       .default([]),
+    flagContentUri: z.string().optional(),
+    googleMapsUri: z.string().optional(),
   })
   .openapi({
     description: 'Photo information',
@@ -123,21 +125,114 @@ export const OpeningHoursSchema = z
             day: z.number().int().min(0).max(6),
             hour: z.number().int().min(0).max(23),
             minute: z.number().int().min(0).max(59),
+            date: z.object({ year: z.number(), month: z.number(), day: z.number() }).optional(),
+            truncated: z.boolean().optional(),
           }),
           close: z
             .object({
               day: z.number().int().min(0).max(6),
               hour: z.number().int().min(0).max(23),
               minute: z.number().int().min(0).max(59),
+              date: z.object({ year: z.number(), month: z.number(), day: z.number() }).optional(),
+              truncated: z.boolean().optional(),
             })
             .optional(),
         })
       )
       .optional(),
     weekdayDescriptions: z.array(z.string()).optional(),
+    secondaryHoursType: z.string().optional(),
+    specialDays: z
+      .array(
+        z.object({
+          date: z
+            .object({
+              year: z.number(),
+              month: z.number(),
+              day: z.number(),
+            })
+            .optional(),
+        })
+      )
+      .optional(),
+    nextOpenTime: z.string().optional(),
+    nextCloseTime: z.string().optional(),
   })
   .openapi({
     description: 'Business operating hours',
+  });
+
+export const ReviewSchema = z
+  .object({
+    name: z.string().optional(),
+    relativePublishTimeDescription: z.string().optional(),
+    rating: z.number().min(1).max(5).optional(),
+    text: LocalizedTextSchema.optional(),
+    originalText: LocalizedTextSchema.optional(),
+    authorAttribution: z
+      .object({
+        displayName: z.string().optional(),
+        uri: z.string().optional(),
+        photoUri: z.string().optional(),
+      })
+      .optional(),
+    publishTime: z.string().optional(),
+    flagContentUri: z.string().optional(),
+    googleMapsUri: z.string().optional(),
+  })
+  .openapi({
+    description: 'User review',
+  });
+
+export const PaymentOptionsSchema = z
+  .object({
+    acceptsCreditCards: z.boolean().optional(),
+    acceptsDebitCards: z.boolean().optional(),
+    acceptsCashOnly: z.boolean().optional(),
+    acceptsNfc: z.boolean().optional(),
+  })
+  .openapi({
+    description: 'Accepted payment methods',
+  });
+
+export const ParkingOptionsSchema = z
+  .object({
+    freeParkingLot: z.boolean().optional(),
+    paidParkingLot: z.boolean().optional(),
+    freeStreetParking: z.boolean().optional(),
+    paidStreetParking: z.boolean().optional(),
+    valetParking: z.boolean().optional(),
+    freeGarageParking: z.boolean().optional(),
+    paidGarageParking: z.boolean().optional(),
+  })
+  .openapi({
+    description: 'Parking options',
+  });
+
+export const AccessibilityOptionsSchema = z
+  .object({
+    wheelchairAccessibleParking: z.boolean().optional(),
+    wheelchairAccessibleEntrance: z.boolean().optional(),
+    wheelchairAccessibleRestroom: z.boolean().optional(),
+    wheelchairAccessibleSeating: z.boolean().optional(),
+  })
+  .openapi({
+    description: 'Accessibility options',
+  });
+
+export const MoneySchema = z.object({
+  currencyCode: z.string().optional(),
+  units: z.string().optional(),
+  nanos: z.number().optional(),
+});
+
+export const PriceRangeSchema = z
+  .object({
+    startPrice: MoneySchema.optional(),
+    endPrice: MoneySchema.optional(),
+  })
+  .openapi({
+    description: 'Price range for the establishment',
   });
 
 // ============================================
@@ -162,6 +257,7 @@ export const PlaceSchema = z
         example: ['bar', 'restaurant', 'food', 'point_of_interest'],
       }),
     primaryType: z.string().optional().openapi({ example: 'bar' }),
+    primaryTypeDisplayName: LocalizedTextSchema.optional(),
     formattedAddress: z.string().optional().openapi({
       example: '607 Trinity St, Austin, TX 78701, USA',
     }),
@@ -169,6 +265,7 @@ export const PlaceSchema = z
     rating: z.number().min(1).max(5).optional().openapi({ example: 4.6 }),
     userRatingCount: z.number().int().nonnegative().optional().openapi({ example: 1234 }),
     priceLevel: PriceLevelEnum.optional(),
+    priceRange: PriceRangeSchema.optional(),
     businessStatus: BusinessStatusEnum.optional(),
     googleMapsUri: z.string().url().optional().openapi({
       example: 'https://maps.google.com/?cid=12345',
@@ -177,9 +274,12 @@ export const PlaceSchema = z
       example: 'https://www.example-bar.com',
     }),
     internationalPhoneNumber: z.string().optional().openapi({ example: '+1 512-555-0123' }),
+    nationalPhoneNumber: z.string().optional().openapi({ example: '(512) 555-0123' }),
     photos: z.array(PhotoSchema).optional(),
     currentOpeningHours: OpeningHoursSchema.optional(),
     regularOpeningHours: OpeningHoursSchema.optional(),
+    editorialSummary: LocalizedTextSchema.optional(),
+    reviews: z.array(ReviewSchema).optional(),
 
     // Food & Drink attributes
     servesBeer: z.boolean().optional(),
@@ -194,9 +294,15 @@ export const PlaceSchema = z
     takeout: z.boolean().optional(),
     delivery: z.boolean().optional(),
     dineIn: z.boolean().optional(),
+    curbsidePickup: z.boolean().optional(),
     reservable: z.boolean().optional(),
     outdoorSeating: z.boolean().optional(),
     liveMusic: z.boolean().optional(),
+
+    // Facility options
+    paymentOptions: PaymentOptionsSchema.optional(),
+    parkingOptions: ParkingOptionsSchema.optional(),
+    accessibilityOptions: AccessibilityOptionsSchema.optional(),
   })
   .openapi({
     title: 'Place',
@@ -260,7 +366,7 @@ export const NearbySearchRequestSchema = z
 
 export const NearbySearchResponseSchema = z
   .object({
-    places: z.array(PlaceSchema),
+    places: z.array(PlaceSchema).default([]),
     nextPageToken: z.string().optional().openapi({
       description: 'Token for fetching next page of results',
       example: 'AfLeUgMY_n3uH...',

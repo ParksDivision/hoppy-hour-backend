@@ -7,6 +7,7 @@
 
 import { Request, Response } from 'express';
 import { addSearchNearbyJob, addBulkSearchJobs, getQueueStats } from '../../queues/jobs/googlePlacesJobs';
+import { addCitySearchWithSocialScrapingFlow } from '../../queues/jobs/socialScraperJobs';
 import {
   getAllGoogleRawBusinesses,
   findGoogleRawBusinessById,
@@ -239,7 +240,7 @@ export const getGoogleQueueStats = async (req: Request, res: Response): Promise<
  */
 export const searchCityBusinesses = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { city, includedTypes, excludedTypes } = req.body;
+    const { city, includedTypes, excludedTypes, socialScraping } = req.body;
 
     if (!city || typeof city !== 'string') {
       res.status(400).json({ error: 'City name is required' });
@@ -270,7 +271,37 @@ export const searchCityBusinesses = async (req: Request, res: Response): Promise
       },
     }));
 
-    // Queue all searches
+    // If socialScraping is enabled, use FlowProducer to chain search -> scraping
+    if (socialScraping) {
+      const flow = await addCitySearchWithSocialScrapingFlow(
+        locations,
+        city,
+        req.ip ?? 'unknown'
+      );
+
+      logger.info(
+        {
+          city,
+          coordinateCount: coordinates.length,
+          parentJobId: flow.job.id,
+          ip: req.ip,
+        },
+        `Queued city-wide search with social scraping for ${city}`
+      );
+
+      res.status(202).json({
+        message: `City-wide search for ${city} queued with social scraping`,
+        city,
+        parentJobId: flow.job.id,
+        status: 'queued',
+        searchPoints: coordinates.length,
+        socialScrapingEnabled: true,
+        note: 'Social links will be scraped automatically after all searches complete',
+      });
+      return;
+    }
+
+    // Standard flow without social scraping
     const jobs = await addBulkSearchJobs(locations);
 
     logger.info(

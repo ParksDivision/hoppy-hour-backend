@@ -11,7 +11,7 @@ const redisConfig = {
   lazyConnect: false, // Connect immediately
   keepAlive: 30000,
   connectTimeout: 5000, // Reduced from 10000
-  commandTimeout: 2000, // Reduced from 5000
+  commandTimeout: 10000,
 };
 
 export const redis = new Redis(redisConfig);

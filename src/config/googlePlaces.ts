@@ -14,13 +14,22 @@ export const googlePlacesConfig = {
     maxResultCount: 20, // Google Places API maximum per request
     includedTypes: [
       'bar',
+      'bar_and_grill',
+      'barbecue_restaurant',
+      'beer_garden',
+      'brewery',
+      'brewpub',
+      'cajun_restaurant',
+      'cocktail_bar',
+      'fine_dining_restaurant',
+      'gastropub',
+      'hookah_bar',
+      'irish_pub',
+      'lounge_bar',
       'pub',
-      'restaurant',
-      'night_club',
-      'cafe',
-      'movie_theater',
-      'dance_hall',
-      'bowling_alley',
+      'sports_bar',
+      'wine_bar',
+      'winery'
     ],
 
     // Field masks for different detail levels. Standard is the default for initial retrieval

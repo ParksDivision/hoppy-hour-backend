@@ -24,8 +24,32 @@ model GoogleRawBusiness {
   // Relations with cascade delete
   businessesAustin BusinessAustin[]
   pendingDeals     PendingDeal[]
+  socialLinks      BusinessSocialLink?
 
   @@map("google_raw_business")
+}
+
+model BusinessSocialLink {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @map("google_raw_business_id")
+  websiteUrl          String?   @map("website_url") @db.VarChar(500)
+  facebookUrl         String?   @map("facebook_url") @db.VarChar(500)
+  instagramUrl        String?   @map("instagram_url") @db.VarChar(500)
+  twitterUrl          String?   @map("twitter_url") @db.VarChar(500)
+  scrapedAt           DateTime? @map("scraped_at") @db.Timestamp()
+  scrapeMethod        String?   @map("scrape_method") @db.VarChar(20)
+  scrapeStatus        String?   @map("scrape_status") @db.VarChar(20)
+  errorMessage        String?   @map("error_message") @db.VarChar(500)
+  rawLinksFound       Json?     @map("raw_links_found")
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@unique([googleRawBusinessId])
+  @@map("business_social_links")
 }
 
 model YelpRawBusiness {

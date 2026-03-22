@@ -1,5 +1,8 @@
-import cors from 'cors';
+// Load environment variables before any other imports
 import dotenv from 'dotenv';
+dotenv.config();
+
+import cors from 'cors';
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
@@ -7,9 +10,6 @@ import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
 import { shutdown } from './queues';
 import { logger } from './utils/logger';
-
-// Load environment variables first
-dotenv.config();
 
 const app = express();
 const port = process.env.PORT ?? 3001;
@@ -47,11 +47,13 @@ app.get('/health', (req, res) => {
 // ============================================
 import { userRoutes } from './routes/userRoutes';
 import { googleRoutes } from './routes/googleRoutes';
+import { socialScraperRoutes } from './routes/socialScraperRoutes';
 // import { businessRoutes } from './routes/businessRoutes';
 
 // Mount routes
 app.use('/api/users', userRoutes);
 app.use('/api/data-collection/google', googleRoutes);
+app.use('/api/data-collection/social', socialScraperRoutes);
 // app.use('/api/businesses', businessRoutes);
 
 // ============================================

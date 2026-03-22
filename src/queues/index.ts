@@ -6,6 +6,10 @@ import { logger } from '../utils/logger';
 import { googlePlacesQueue } from './jobs/googlePlacesJobs';
 import { googlePlacesWorker } from './workers/googlePlacesWorker';
 
+// Import Social Scraper queue and worker
+import { socialScraperQueue } from './jobs/socialScraperJobs';
+import { socialScraperWorker } from './workers/socialScraperWorker';
+
 const redisConnection = createRedisConnection();
 
 // Create a simple queue
@@ -39,8 +43,9 @@ emailWorker.on('failed', (job, err) => {
   logger.error(`Job ${job?.id} has failed with error: ${err.message}`);
 });
 
-// Export Google Places queue for use in controllers
+// Export queues for use in controllers
 export { googlePlacesQueue, googlePlacesWorker };
+export { socialScraperQueue, socialScraperWorker };
 
 export const shutdown = async () => {
   logger.info('Shutting down queues and workers...');
@@ -48,5 +53,7 @@ export const shutdown = async () => {
   await emailQueue.close();
   await googlePlacesWorker.close();
   await googlePlacesQueue.close();
+  await socialScraperWorker.close();
+  await socialScraperQueue.close();
   redisConnection.disconnect();
 };
