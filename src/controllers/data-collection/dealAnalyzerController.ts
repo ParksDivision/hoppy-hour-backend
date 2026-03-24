@@ -12,14 +12,29 @@ import {
 import { findGoogleRawBusinessById } from '../../repositories/googleRawBusinessRepository';
 import { findSocialLinksByBusinessId } from '../../repositories/businessSocialLinkRepository';
 import { logger } from '../../utils/logger';
+import type { DealSourceType, AnalyzeBusinessJobData } from '../../services/dealAnalyzer/types';
+
+const ALL_SOURCE_TYPES: DealSourceType[] = ['website', 'instagram', 'facebook', 'twitter'];
+
+/** Map sourceType to the corresponding URL field on BusinessSocialLink */
+const SOURCE_URL_FIELD: Record<
+  DealSourceType,
+  'websiteUrl' | 'instagramUrl' | 'facebookUrl' | 'twitterUrl'
+> = {
+  website: 'websiteUrl',
+  instagram: 'instagramUrl',
+  facebook: 'facebookUrl',
+  twitter: 'twitterUrl',
+};
 
 /**
  * POST /api/data-collection/deals/analyze
  * Manually trigger deal analysis for a single business by ID.
+ * Queues jobs for all available source URLs (website, instagram, facebook, twitter).
  */
 export const analyzeBusinessDeals = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { googleRawBusinessId } = req.body;
+    const { googleRawBusinessId, sourceType } = req.body;
 
     if (!googleRawBusinessId || typeof googleRawBusinessId !== 'string') {
       res.status(400).json({ error: 'googleRawBusinessId is required' });
@@ -33,34 +48,50 @@ export const analyzeBusinessDeals = async (req: Request, res: Response): Promise
       return;
     }
 
-    // Check for website URL from social links or raw business
+    // Get social links for this business
     const socialLinks = await findSocialLinksByBusinessId(googleRawBusinessId);
-    const websiteUrl = socialLinks?.websiteUrl ?? business.uri;
 
-    if (!websiteUrl) {
-      res.status(400).json({ error: 'Business has no website URL to analyze' });
+    // Determine which sources to analyze
+    const sourcesToAnalyze: DealSourceType[] = sourceType
+      ? [sourceType as DealSourceType]
+      : ALL_SOURCE_TYPES;
+
+    // Build jobs for each available source URL
+    const jobs: { sourceType: DealSourceType; sourceUrl: string; jobId: string | undefined }[] = [];
+
+    for (const st of sourcesToAnalyze) {
+      const urlField = SOURCE_URL_FIELD[st];
+      const url =
+        st === 'website' ? (socialLinks?.[urlField] ?? business.uri) : socialLinks?.[urlField];
+
+      if (!url) continue;
+
+      const job = await addAnalyzeBusinessJob({
+        googleRawBusinessId: business.id,
+        businessName: business.name,
+        sourceUrl: url,
+        sourceType: st,
+        requestedBy: req.ip ?? 'unknown',
+      });
+
+      jobs.push({ sourceType: st, sourceUrl: url, jobId: job.id });
+    }
+
+    if (jobs.length === 0) {
+      res.status(400).json({ error: 'Business has no URLs to analyze' });
       return;
     }
 
-    const job = await addAnalyzeBusinessJob({
-      googleRawBusinessId: business.id,
-      businessName: business.name,
-      sourceUrl: websiteUrl,
-      sourceType: 'website',
-      requestedBy: req.ip ?? 'unknown',
-    });
-
     logger.info(
-      { jobId: job.id, businessId: business.id },
-      'Deal analysis job queued for single business'
+      { businessId: business.id, jobCount: jobs.length },
+      'Deal analysis jobs queued for single business'
     );
 
     res.status(202).json({
-      message: 'Deal analysis job queued',
-      jobId: job.id,
+      message: `${jobs.length} deal analysis job(s) queued`,
+      jobs,
       status: 'queued',
       businessName: business.name,
-      websiteUrl,
     });
   } catch (error) {
     logger.error({ error }, 'Failed to queue deal analysis job');
@@ -70,38 +101,52 @@ export const analyzeBusinessDeals = async (req: Request, res: Response): Promise
 
 /**
  * POST /api/data-collection/deals/analyze/pending
- * Trigger analysis for all businesses with websites not yet analyzed.
+ * Trigger analysis for all businesses across all platforms not yet analyzed.
+ * Queues website, Instagram, Facebook, and Twitter analysis jobs together.
  */
 export const analyzePendingBusinesses = async (req: Request, res: Response): Promise<void> => {
   try {
-    const businesses = await findBusinessesWithoutDealAnalysis('website');
+    const allJobs: AnalyzeBusinessJobData[] = [];
+    const breakdown: Record<string, number> = {};
 
-    if (businesses.length === 0) {
+    for (const st of ALL_SOURCE_TYPES) {
+      const urlField = SOURCE_URL_FIELD[st];
+      const businesses = await findBusinessesWithoutDealAnalysis(st);
+
+      const platformJobs: AnalyzeBusinessJobData[] = businesses
+        .filter((b: Record<string, unknown>) => b[urlField] != null)
+        .map((b: Record<string, unknown>) => ({
+          googleRawBusinessId: (b.googleRawBusiness as { id: string; name: string }).id,
+          businessName: (b.googleRawBusiness as { id: string; name: string }).name,
+          sourceUrl: b[urlField] as string,
+          sourceType: st,
+          requestedBy: req.ip ?? 'unknown',
+        }));
+
+      allJobs.push(...platformJobs);
+      breakdown[st] = platformJobs.length;
+    }
+
+    if (allJobs.length === 0) {
       res.json({
         message: 'No businesses pending deal analysis',
         count: 0,
+        breakdown,
       });
       return;
     }
 
-    const analyzeJobs = businesses.map((b) => ({
-      googleRawBusinessId: b.googleRawBusiness.id,
-      businessName: b.googleRawBusiness.name,
-      sourceUrl: b.websiteUrl!,
-      sourceType: 'website' as const,
-      requestedBy: req.ip ?? 'unknown',
-    }));
-
-    const jobs = await addBulkAnalyzeJobs(analyzeJobs);
+    const jobs = await addBulkAnalyzeJobs(allJobs);
 
     logger.info(
-      { count: jobs.length, ip: req.ip },
-      'Bulk deal analysis jobs queued for pending businesses'
+      { count: jobs.length, breakdown, ip: req.ip },
+      'Bulk deal analysis jobs queued for all platforms'
     );
 
     res.status(202).json({
       message: `${jobs.length} deal analysis jobs queued`,
       count: jobs.length,
+      breakdown,
       status: 'queued',
     });
   } catch (error) {

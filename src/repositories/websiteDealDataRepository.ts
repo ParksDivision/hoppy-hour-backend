@@ -84,16 +84,29 @@ export const upsertWebsiteDealData = async (
 };
 
 /**
+ * Map sourceType to the corresponding URL field on BusinessSocialLink.
+ */
+const SOURCE_URL_FIELD: Record<DealSourceType, string> = {
+  website: 'websiteUrl',
+  instagram: 'instagramUrl',
+  facebook: 'facebookUrl',
+  twitter: 'twitterUrl',
+};
+
+/**
  * Find businesses that have been scraped for social links but not yet analyzed for deals.
+ * Dynamically checks the URL field that corresponds to the sourceType.
  */
 export const findBusinessesWithoutDealAnalysis = async (
   sourceType: DealSourceType = 'website',
   limit: number = 1000
 ) => {
   try {
+    const urlField = SOURCE_URL_FIELD[sourceType];
+
     return await prisma.businessSocialLink.findMany({
       where: {
-        websiteUrl: { not: null },
+        [urlField]: { not: null },
         scrapeStatus: 'success',
         googleRawBusiness: {
           dealData: {
@@ -112,7 +125,7 @@ export const findBusinessesWithoutDealAnalysis = async (
       orderBy: { createdOn: 'desc' },
     });
   } catch (error) {
-    logger.error({ error }, 'Failed to find businesses without deal analysis');
+    logger.error({ error, sourceType }, 'Failed to find businesses without deal analysis');
     throw error;
   }
 };

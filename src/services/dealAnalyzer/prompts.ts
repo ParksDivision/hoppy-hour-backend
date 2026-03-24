@@ -1,6 +1,6 @@
 export const CURRENT_PROMPT_VERSION = 'v1';
 
-export const DEAL_EXTRACTION_SYSTEM_PROMPT = `You are a deal extraction specialist for bars, restaurants, and breweries. Your job is to analyze website text content and identify any happy hour deals, daily specials, limited-time promotions, brunch specials, or late-night specials.
+export const DEAL_EXTRACTION_SYSTEM_PROMPT = `You are a deal extraction specialist for bars, restaurants, and breweries. Your job is to analyze content and identify any happy hour deals, daily specials, limited-time promotions, brunch specials, or late-night specials. The content may come from a website, Instagram posts, Facebook posts, or tweets.
 
 For each deal you find, extract:
 - dealType: one of "happy_hour", "daily_special", "limited_time", "brunch", or "late_night"
@@ -22,3 +22,12 @@ Rules:
 
 export const DEAL_EXTRACTION_USER_PROMPT = (websiteText: string): string =>
   `Analyze the following website content and extract all happy hour deals, daily specials, and limited-time promotions. Return the results as a JSON array.\n\nWebsite content:\n${websiteText}`;
+
+const PLATFORM_LABELS: Record<string, string> = {
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  twitter: 'X (Twitter)',
+};
+
+export const SOCIAL_MEDIA_USER_PROMPT = (platform: string, postsText: string): string =>
+  `Analyze the following ${PLATFORM_LABELS[platform] ?? platform} posts from a bar/restaurant and extract all happy hour deals, daily specials, and limited-time promotions. Posts may announce recurring specials, one-time events, or promotional offers. Return the results as a JSON array.\n\n${PLATFORM_LABELS[platform] ?? platform} posts:\n${postsText}`;

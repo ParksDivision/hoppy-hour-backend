@@ -51,3 +51,23 @@ export interface TriggerDealAnalysisJobData {
   sourceType: DealSourceType;
   requestedBy?: string;
 }
+
+/** Instagram Graph API post */
+export interface InstagramPost {
+  caption: string | null;
+  timestamp: string;
+  mediaType: string;
+  permalink: string;
+}
+
+/** Facebook Graph API page post */
+export interface FacebookPost {
+  message: string | null;
+  createdTime: string;
+}
+
+/** X API v2 tweet */
+export interface Tweet {
+  text: string;
+  createdAt: string;
+}

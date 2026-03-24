@@ -188,6 +188,51 @@ describe('findBusinessesWithoutDealAnalysis', () => {
       expect.objectContaining({ take: 50 })
     );
   });
+
+  it('filters by instagramUrl for instagram sourceType', async () => {
+    vi.mocked(prisma.businessSocialLink.findMany).mockResolvedValue([] as never);
+
+    await findBusinessesWithoutDealAnalysis('instagram');
+
+    expect(prisma.businessSocialLink.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          instagramUrl: { not: null },
+          scrapeStatus: 'success',
+        }),
+      })
+    );
+  });
+
+  it('filters by facebookUrl for facebook sourceType', async () => {
+    vi.mocked(prisma.businessSocialLink.findMany).mockResolvedValue([] as never);
+
+    await findBusinessesWithoutDealAnalysis('facebook');
+
+    expect(prisma.businessSocialLink.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          facebookUrl: { not: null },
+          scrapeStatus: 'success',
+        }),
+      })
+    );
+  });
+
+  it('filters by twitterUrl for twitter sourceType', async () => {
+    vi.mocked(prisma.businessSocialLink.findMany).mockResolvedValue([] as never);
+
+    await findBusinessesWithoutDealAnalysis('twitter');
+
+    expect(prisma.businessSocialLink.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          twitterUrl: { not: null },
+          scrapeStatus: 'success',
+        }),
+      })
+    );
+  });
 });
 
 describe('findDealsByBusinessId', () => {

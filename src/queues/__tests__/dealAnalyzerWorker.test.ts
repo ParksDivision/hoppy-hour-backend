@@ -4,12 +4,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   workerInstances,
   mockAnalyzeWebsite,
+  mockAnalyzeInstagram,
+  mockAnalyzeFacebook,
+  mockAnalyzeTwitter,
   mockUpsertDealData,
   mockFindWithoutAnalysis,
   mockAddBulkAnalyzeJobs,
 } = vi.hoisted(() => ({
   workerInstances: [] as Array<{ queueName: string; processor: unknown }>,
   mockAnalyzeWebsite: vi.fn(),
+  mockAnalyzeInstagram: vi.fn(),
+  mockAnalyzeFacebook: vi.fn(),
+  mockAnalyzeTwitter: vi.fn(),
   mockUpsertDealData: vi.fn(),
   mockFindWithoutAnalysis: vi.fn(),
   mockAddBulkAnalyzeJobs: vi.fn(),
@@ -59,6 +65,9 @@ vi.mock('../../utils/logger', () => ({
 // Mock the analyzer service
 vi.mock('../../services/dealAnalyzer/service', () => ({
   analyzeWebsiteForDeals: (...args: unknown[]) => mockAnalyzeWebsite(...args),
+  analyzeInstagramForDeals: (...args: unknown[]) => mockAnalyzeInstagram(...args),
+  analyzeFacebookForDeals: (...args: unknown[]) => mockAnalyzeFacebook(...args),
+  analyzeTwitterForDeals: (...args: unknown[]) => mockAnalyzeTwitter(...args),
 }));
 
 // Mock the repository
@@ -253,6 +262,147 @@ describe('dealAnalyzerWorker - analyzeBusinessDeals', () => {
     });
 
     expect(result).toMatchObject({ success: true, dealCount: 0 });
+  });
+});
+
+describe('dealAnalyzerWorker - analyzeBusinessDeals (social media routing)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('routes instagram sourceType to analyzeInstagramForDeals', async () => {
+    const processor = getWorkerProcessor();
+
+    mockAnalyzeInstagram.mockResolvedValue({
+      sourceUrl: 'https://instagram.com/testbar',
+      sourceType: 'instagram',
+      status: 'success',
+      deals: [{ dealType: 'happy_hour', title: 'IG Happy Hour' }],
+      rawAiResponse: { content: 'test' },
+      aiModel: 'claude-sonnet-4-6',
+      promptVersion: 'v1',
+      durationMs: 3000,
+    });
+    mockUpsertDealData.mockResolvedValue({});
+
+    const job = createMockJob('analyzeBusinessDeals', {
+      googleRawBusinessId: 'biz-3',
+      businessName: 'IG Bar',
+      sourceUrl: 'https://instagram.com/testbar',
+      sourceType: 'instagram',
+      requestedBy: 'test',
+    });
+
+    const result = await processor(job);
+
+    expect(mockAnalyzeInstagram).toHaveBeenCalledWith(
+      'https://instagram.com/testbar',
+      { googleRawBusinessId: 'biz-3', requestedBy: 'test' }
+    );
+    expect(mockAnalyzeWebsite).not.toHaveBeenCalled();
+    expect(mockUpsertDealData).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: true, dealCount: 1, status: 'success' });
+  });
+
+  it('routes facebook sourceType to analyzeFacebookForDeals', async () => {
+    const processor = getWorkerProcessor();
+
+    mockAnalyzeFacebook.mockResolvedValue({
+      sourceUrl: 'https://facebook.com/testbar',
+      sourceType: 'facebook',
+      status: 'no_deals',
+      deals: [],
+      rawAiResponse: { content: '[]' },
+      aiModel: 'claude-sonnet-4-6',
+      promptVersion: 'v1',
+      durationMs: 2500,
+    });
+    mockUpsertDealData.mockResolvedValue({});
+
+    const job = createMockJob('analyzeBusinessDeals', {
+      googleRawBusinessId: 'biz-4',
+      businessName: 'FB Bar',
+      sourceUrl: 'https://facebook.com/testbar',
+      sourceType: 'facebook',
+      requestedBy: 'test',
+    });
+
+    const result = await processor(job);
+
+    expect(mockAnalyzeFacebook).toHaveBeenCalledWith(
+      'https://facebook.com/testbar',
+      { googleRawBusinessId: 'biz-4', requestedBy: 'test' }
+    );
+    expect(mockAnalyzeWebsite).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: true, dealCount: 0, status: 'no_deals' });
+  });
+
+  it('routes twitter sourceType to analyzeTwitterForDeals', async () => {
+    const processor = getWorkerProcessor();
+
+    mockAnalyzeTwitter.mockResolvedValue({
+      sourceUrl: 'https://x.com/testbar',
+      sourceType: 'twitter',
+      status: 'success',
+      deals: [{ dealType: 'daily_special', title: 'Tweet Special' }],
+      rawAiResponse: { content: 'test' },
+      aiModel: 'claude-sonnet-4-6',
+      promptVersion: 'v1',
+      durationMs: 2000,
+    });
+    mockUpsertDealData.mockResolvedValue({});
+
+    const job = createMockJob('analyzeBusinessDeals', {
+      googleRawBusinessId: 'biz-5',
+      businessName: 'X Bar',
+      sourceUrl: 'https://x.com/testbar',
+      sourceType: 'twitter',
+      requestedBy: 'test',
+    });
+
+    const result = await processor(job);
+
+    expect(mockAnalyzeTwitter).toHaveBeenCalledWith(
+      'https://x.com/testbar',
+      { googleRawBusinessId: 'biz-5', requestedBy: 'test' }
+    );
+    expect(mockAnalyzeWebsite).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ success: true, dealCount: 1, status: 'success' });
+  });
+});
+
+describe('dealAnalyzerWorker - triggerDealAnalysis (social media)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('uses instagramUrl field for instagram sourceType', async () => {
+    const processor = getWorkerProcessor();
+
+    mockFindWithoutAnalysis.mockResolvedValue([
+      {
+        id: 'link-1',
+        instagramUrl: 'https://instagram.com/bar1',
+        googleRawBusiness: { id: 'biz-1', name: 'Bar 1' },
+      },
+    ]);
+    mockAddBulkAnalyzeJobs.mockResolvedValue([{ id: 'j1' }]);
+
+    const job = createMockJob('triggerDealAnalysis', {
+      sourceType: 'instagram',
+      requestedBy: 'test',
+    });
+
+    const result = await processor(job);
+
+    expect(mockFindWithoutAnalysis).toHaveBeenCalledWith('instagram');
+    expect(mockAddBulkAnalyzeJobs).toHaveBeenCalledWith([
+      expect.objectContaining({
+        sourceUrl: 'https://instagram.com/bar1',
+        sourceType: 'instagram',
+      }),
+    ]);
+    expect(result).toMatchObject({ success: true, count: 1, sourceType: 'instagram' });
   });
 });
 

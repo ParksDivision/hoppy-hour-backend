@@ -1,7 +1,12 @@
 import { Worker, Job } from 'bullmq';
 import { createRedisConnection } from '../../config/redis';
 import { logger } from '../../utils/logger';
-import { analyzeWebsiteForDeals } from '../../services/dealAnalyzer/service';
+import {
+  analyzeWebsiteForDeals,
+  analyzeInstagramForDeals,
+  analyzeFacebookForDeals,
+  analyzeTwitterForDeals,
+} from '../../services/dealAnalyzer/service';
 import {
   upsertWebsiteDealData,
   findBusinessesWithoutDealAnalysis,
@@ -9,8 +14,22 @@ import {
 import { addBulkAnalyzeJobs } from '../jobs/dealAnalyzerJobs';
 import type {
   AnalyzeBusinessJobData,
+  DealSourceType,
   TriggerDealAnalysisJobData,
 } from '../../services/dealAnalyzer/types';
+
+type BusinessWithLinks = Awaited<ReturnType<typeof findBusinessesWithoutDealAnalysis>>[number];
+
+/** Map sourceType to the BusinessSocialLink URL field */
+const SOURCE_URL_FIELD: Record<
+  DealSourceType,
+  'websiteUrl' | 'instagramUrl' | 'facebookUrl' | 'twitterUrl'
+> = {
+  website: 'websiteUrl',
+  instagram: 'instagramUrl',
+  facebook: 'facebookUrl',
+  twitter: 'twitterUrl',
+};
 
 /**
  * Handle triggerDealAnalysis: queries DB for businesses not yet analyzed,
@@ -32,13 +51,16 @@ const handleTriggerDealAnalysis = async (job: Job<TriggerDealAnalysisJobData>) =
     return { success: true, count: 0, message: 'No businesses found needing deal analysis' };
   }
 
-  const analyzeJobs: AnalyzeBusinessJobData[] = businesses.map((b) => ({
-    googleRawBusinessId: b.googleRawBusiness.id,
-    businessName: b.googleRawBusiness.name,
-    sourceUrl: b.websiteUrl!,
-    sourceType,
-    requestedBy,
-  }));
+  const urlField = SOURCE_URL_FIELD[sourceType];
+  const analyzeJobs: AnalyzeBusinessJobData[] = businesses
+    .filter((b: BusinessWithLinks) => b[urlField] != null)
+    .map((b: BusinessWithLinks) => ({
+      googleRawBusinessId: b.googleRawBusiness.id,
+      businessName: b.googleRawBusiness.name,
+      sourceUrl: b[urlField] as string,
+      sourceType,
+      requestedBy,
+    }));
 
   await job.updateProgress(50);
 
@@ -66,11 +88,31 @@ const handleAnalyzeBusinessDeals = async (job: Job<AnalyzeBusinessJobData>) => {
     requestedBy = 'system',
   } = job.data;
 
-  logger.info({ jobId: job.id, businessName, sourceUrl }, 'Processing analyzeBusinessDeals job');
+  logger.info(
+    { jobId: job.id, businessName, sourceUrl, sourceType },
+    'Processing analyzeBusinessDeals job'
+  );
 
   await job.updateProgress(10);
 
-  const result = await analyzeWebsiteForDeals(sourceUrl);
+  // Route to platform-specific analysis function
+  const socialOptions = { googleRawBusinessId, requestedBy };
+  let result;
+  switch (sourceType) {
+    case 'instagram':
+      result = await analyzeInstagramForDeals(sourceUrl, socialOptions);
+      break;
+    case 'facebook':
+      result = await analyzeFacebookForDeals(sourceUrl, socialOptions);
+      break;
+    case 'twitter':
+      result = await analyzeTwitterForDeals(sourceUrl, socialOptions);
+      break;
+    case 'website':
+    default:
+      result = await analyzeWebsiteForDeals(sourceUrl);
+      break;
+  }
 
   await job.updateProgress(70);
 

@@ -5,10 +5,19 @@ import { fetchAndCleanWebsite } from './htmlCleaner';
 import {
   DEAL_EXTRACTION_SYSTEM_PROMPT,
   DEAL_EXTRACTION_USER_PROMPT,
+  SOCIAL_MEDIA_USER_PROMPT,
   CURRENT_PROMPT_VERSION,
 } from './prompts';
 import { logger } from '../../utils/logger';
-import type { DealAnalysisResult, ExtractedDeal } from './types';
+import { fetchInstagramPosts, formatInstagramContent } from './clients/instagramClient';
+import { fetchFacebookPosts, formatFacebookContent } from './clients/facebookClient';
+import { fetchTwitterPosts, formatTwitterContent } from './clients/twitterClient';
+import {
+  upsertInstagramRawData,
+  upsertFacebookRawData,
+  upsertTwitterRawData,
+} from '../../repositories/socialRawDataRepository';
+import type { DealAnalysisResult, DealSourceType, ExtractedDeal } from './types';
 
 /** Zod schema for Claude's structured output */
 const DealItemSchema = z.object({
@@ -37,10 +46,14 @@ const DealExtractionResponseSchema = z.object({
 const MIN_CONTENT_LENGTH = 50;
 
 /**
- * Analyze a website for happy hour deals and specials using Claude API.
+ * Shared core: analyze arbitrary text content for deals using Claude API.
+ * Used by all platform-specific functions below.
  */
-export async function analyzeWebsiteForDeals(
-  websiteUrl: string,
+export async function analyzeContentForDeals(
+  content: string,
+  userPrompt: string,
+  sourceType: DealSourceType,
+  sourceUrl: string,
   options?: { model?: string; promptVersion?: string }
 ): Promise<DealAnalysisResult> {
   const startTime = Date.now();
@@ -48,19 +61,11 @@ export async function analyzeWebsiteForDeals(
   const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
 
   try {
-    // Step 1: Fetch and clean website content
-    const { cleanedText, originalLength, truncated } = await fetchAndCleanWebsite(websiteUrl);
-
-    logger.debug(
-      { websiteUrl, originalLength, truncated, cleanedLength: cleanedText.length },
-      'Cleaned website content for deal analysis'
-    );
-
-    // Step 2: Check if content is too short to be meaningful
-    if (cleanedText.length < MIN_CONTENT_LENGTH) {
+    // Check if content is too short to be meaningful
+    if (content.length < MIN_CONTENT_LENGTH) {
       return {
-        sourceUrl: websiteUrl,
-        sourceType: 'website',
+        sourceUrl,
+        sourceType,
         status: 'no_deals',
         deals: [],
         rawAiResponse: null,
@@ -71,7 +76,7 @@ export async function analyzeWebsiteForDeals(
       };
     }
 
-    // Step 3: Call Claude API with structured output
+    // Call Claude API
     const response = await anthropicClient.messages.create({
       model,
       max_tokens: anthropicConfig.maxTokens,
@@ -79,12 +84,12 @@ export async function analyzeWebsiteForDeals(
       messages: [
         {
           role: 'user',
-          content: DEAL_EXTRACTION_USER_PROMPT(cleanedText),
+          content: userPrompt,
         },
       ],
     });
 
-    // Step 4: Parse the response
+    // Parse the response
     const textBlock = response.content.find((block) => block.type === 'text');
     const rawText = textBlock?.type === 'text' ? textBlock.text : '';
 
@@ -108,7 +113,7 @@ export async function analyzeWebsiteForDeals(
     } catch (err) {
       parseError = err instanceof Error ? err.message : String(err);
       logger.warn(
-        { websiteUrl, rawText: rawText.slice(0, 500), error: parseError },
+        { sourceUrl, sourceType, rawText: rawText.slice(0, 500), error: parseError },
         'Failed to parse Claude deal extraction response'
       );
     }
@@ -116,8 +121,8 @@ export async function analyzeWebsiteForDeals(
     const status = parseError ? 'failed' : deals.length > 0 ? 'success' : 'no_deals';
 
     return {
-      sourceUrl: websiteUrl,
-      sourceType: 'website',
+      sourceUrl,
+      sourceType,
       status,
       deals,
       rawAiResponse: { content: rawText, usage: response.usage },
@@ -132,12 +137,279 @@ export async function analyzeWebsiteForDeals(
       error instanceof Error &&
       (errorMessage.includes('timeout') || errorMessage.includes('ECONNABORTED'));
 
-    logger.error({ websiteUrl, error: errorMessage }, 'Deal analysis failed');
+    logger.error({ sourceUrl, sourceType, error: errorMessage }, 'Deal analysis failed');
+
+    return {
+      sourceUrl,
+      sourceType,
+      status: isTimeout ? 'failed' : 'error',
+      deals: [],
+      rawAiResponse: null,
+      aiModel: model,
+      promptVersion,
+      errorMessage,
+      durationMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Analyze a website for happy hour deals and specials.
+ */
+export async function analyzeWebsiteForDeals(
+  websiteUrl: string,
+  options?: { model?: string; promptVersion?: string }
+): Promise<DealAnalysisResult> {
+  const startTime = Date.now();
+  const model = options?.model ?? anthropicConfig.defaultModel;
+  const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
+
+  try {
+    const { cleanedText, originalLength, truncated } = await fetchAndCleanWebsite(websiteUrl);
+
+    logger.debug(
+      { websiteUrl, originalLength, truncated, cleanedLength: cleanedText.length },
+      'Cleaned website content for deal analysis'
+    );
+
+    return analyzeContentForDeals(
+      cleanedText,
+      DEAL_EXTRACTION_USER_PROMPT(cleanedText),
+      'website',
+      websiteUrl,
+      options
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isTimeout =
+      error instanceof Error &&
+      (errorMessage.includes('timeout') || errorMessage.includes('ECONNABORTED'));
+
+    logger.error({ websiteUrl, error: errorMessage }, 'Website deal analysis failed');
 
     return {
       sourceUrl: websiteUrl,
       sourceType: 'website',
       status: isTimeout ? 'failed' : 'error',
+      deals: [],
+      rawAiResponse: null,
+      aiModel: model,
+      promptVersion,
+      errorMessage,
+      durationMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Analyze Instagram posts for happy hour deals and specials.
+ */
+export async function analyzeInstagramForDeals(
+  instagramUrl: string,
+  options?: { model?: string; promptVersion?: string; googleRawBusinessId?: string; requestedBy?: string }
+): Promise<DealAnalysisResult> {
+  const startTime = Date.now();
+  const model = options?.model ?? anthropicConfig.defaultModel;
+  const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
+
+  try {
+    const posts = await fetchInstagramPosts(instagramUrl);
+
+    if (options?.googleRawBusinessId) {
+      await upsertInstagramRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: instagramUrl,
+          username: posts.length > 0 ? instagramUrl.split('/').filter(Boolean).pop() ?? null : null,
+          posts,
+          fetchStatus: posts.length > 0 ? 'success' : 'empty',
+        },
+        options.requestedBy ?? 'system'
+      );
+    }
+
+    const content = formatInstagramContent(posts);
+
+    logger.debug(
+      { instagramUrl, postCount: posts.length, contentLength: content.length },
+      'Formatted Instagram content for deal analysis'
+    );
+
+    return analyzeContentForDeals(
+      content,
+      SOCIAL_MEDIA_USER_PROMPT('instagram', content),
+      'instagram',
+      instagramUrl,
+      options
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ instagramUrl, error: errorMessage }, 'Instagram deal analysis failed');
+
+    if (options?.googleRawBusinessId) {
+      await upsertInstagramRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: instagramUrl,
+          username: null,
+          posts: [],
+          fetchStatus: 'error',
+          errorMessage,
+        },
+        options.requestedBy ?? 'system'
+      ).catch(() => {}); // don't mask the original error
+    }
+
+    return {
+      sourceUrl: instagramUrl,
+      sourceType: 'instagram',
+      status: 'error',
+      deals: [],
+      rawAiResponse: null,
+      aiModel: model,
+      promptVersion,
+      errorMessage,
+      durationMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Analyze Facebook page posts for happy hour deals and specials.
+ */
+export async function analyzeFacebookForDeals(
+  facebookUrl: string,
+  options?: { model?: string; promptVersion?: string; googleRawBusinessId?: string; requestedBy?: string }
+): Promise<DealAnalysisResult> {
+  const startTime = Date.now();
+  const model = options?.model ?? anthropicConfig.defaultModel;
+  const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
+
+  try {
+    const posts = await fetchFacebookPosts(facebookUrl);
+
+    if (options?.googleRawBusinessId) {
+      await upsertFacebookRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: facebookUrl,
+          pageSlug: facebookUrl.split('/').filter(Boolean).pop() ?? null,
+          posts,
+          fetchStatus: posts.length > 0 ? 'success' : 'empty',
+        },
+        options.requestedBy ?? 'system'
+      );
+    }
+
+    const content = formatFacebookContent(posts);
+
+    logger.debug(
+      { facebookUrl, postCount: posts.length, contentLength: content.length },
+      'Formatted Facebook content for deal analysis'
+    );
+
+    return analyzeContentForDeals(
+      content,
+      SOCIAL_MEDIA_USER_PROMPT('facebook', content),
+      'facebook',
+      facebookUrl,
+      options
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ facebookUrl, error: errorMessage }, 'Facebook deal analysis failed');
+
+    if (options?.googleRawBusinessId) {
+      await upsertFacebookRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: facebookUrl,
+          pageSlug: null,
+          posts: [],
+          fetchStatus: 'error',
+          errorMessage,
+        },
+        options.requestedBy ?? 'system'
+      ).catch(() => {});
+    }
+
+    return {
+      sourceUrl: facebookUrl,
+      sourceType: 'facebook',
+      status: 'error',
+      deals: [],
+      rawAiResponse: null,
+      aiModel: model,
+      promptVersion,
+      errorMessage,
+      durationMs: Date.now() - startTime,
+    };
+  }
+}
+
+/**
+ * Analyze tweets for happy hour deals and specials.
+ */
+export async function analyzeTwitterForDeals(
+  twitterUrl: string,
+  options?: { model?: string; promptVersion?: string; googleRawBusinessId?: string; requestedBy?: string }
+): Promise<DealAnalysisResult> {
+  const startTime = Date.now();
+  const model = options?.model ?? anthropicConfig.defaultModel;
+  const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
+
+  try {
+    const tweets = await fetchTwitterPosts(twitterUrl);
+
+    if (options?.googleRawBusinessId) {
+      await upsertTwitterRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: twitterUrl,
+          username: twitterUrl.split('/').filter(Boolean).pop() ?? null,
+          tweets,
+          fetchStatus: tweets.length > 0 ? 'success' : 'empty',
+        },
+        options.requestedBy ?? 'system'
+      );
+    }
+
+    const content = formatTwitterContent(tweets);
+
+    logger.debug(
+      { twitterUrl, tweetCount: tweets.length, contentLength: content.length },
+      'Formatted Twitter content for deal analysis'
+    );
+
+    return analyzeContentForDeals(
+      content,
+      SOCIAL_MEDIA_USER_PROMPT('twitter', content),
+      'twitter',
+      twitterUrl,
+      options
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error({ twitterUrl, error: errorMessage }, 'Twitter deal analysis failed');
+
+    if (options?.googleRawBusinessId) {
+      await upsertTwitterRawData(
+        {
+          googleRawBusinessId: options.googleRawBusinessId,
+          profileUrl: twitterUrl,
+          username: null,
+          tweets: [],
+          fetchStatus: 'error',
+          errorMessage,
+        },
+        options.requestedBy ?? 'system'
+      ).catch(() => {});
+    }
+
+    return {
+      sourceUrl: twitterUrl,
+      sourceType: 'twitter',
+      status: 'error',
       deals: [],
       rawAiResponse: null,
       aiModel: model,

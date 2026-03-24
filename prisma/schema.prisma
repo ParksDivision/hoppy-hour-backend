@@ -26,6 +26,9 @@ model GoogleRawBusiness {
   pendingDeals     PendingDeal[]
   socialLinks      BusinessSocialLink?
   dealData         WebsiteDealData[]
+  instagramRawData InstagramRawData?
+  facebookRawData  FacebookRawData?
+  twitterRawData   TwitterRawData?
 
   @@map("google_raw_business")
 }
@@ -146,4 +149,64 @@ model PendingDeal {
   yelpRawBusiness   YelpRawBusiness?   @relation(fields: [yelpId], references: [id], onDelete: Cascade)
 
   @@map("pending_deals")
+}
+
+model InstagramRawData {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @unique @map("google_raw_business_id")
+  profileUrl          String?   @map("profile_url") @db.VarChar(500)
+  username            String?   @db.VarChar(100)
+  posts               Json?
+  postCount           Int?      @map("post_count")
+  fetchStatus         String?   @map("fetch_status") @db.VarChar(20)
+  errorMessage        String?   @map("error_message") @db.VarChar(500)
+  fetchedAt           DateTime? @map("fetched_at") @db.Timestamp()
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@map("instagram_raw_data")
+}
+
+model FacebookRawData {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @unique @map("google_raw_business_id")
+  profileUrl          String?   @map("profile_url") @db.VarChar(500)
+  pageSlug            String?   @map("page_slug") @db.VarChar(100)
+  posts               Json?
+  postCount           Int?      @map("post_count")
+  fetchStatus         String?   @map("fetch_status") @db.VarChar(20)
+  errorMessage        String?   @map("error_message") @db.VarChar(500)
+  fetchedAt           DateTime? @map("fetched_at") @db.Timestamp()
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@map("facebook_raw_data")
+}
+
+model TwitterRawData {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @unique @map("google_raw_business_id")
+  profileUrl          String?   @map("profile_url") @db.VarChar(500)
+  username            String?   @db.VarChar(100)
+  tweets              Json?
+  tweetCount          Int?      @map("tweet_count")
+  fetchStatus         String?   @map("fetch_status") @db.VarChar(20)
+  errorMessage        String?   @map("error_message") @db.VarChar(500)
+  fetchedAt           DateTime? @map("fetched_at") @db.Timestamp()
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@map("twitter_raw_data")
 }
