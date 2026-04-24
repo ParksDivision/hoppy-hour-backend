@@ -97,20 +97,22 @@ export const PhotoSchema = z
     name: z.string().openapi({
       example: 'places/ChIJN1t_tDeuEmsRUsoyG83frY4/photos/ATplDJZY',
     }),
-    widthPx: z.number().positive().openapi({ example: 4032 }),
-    heightPx: z.number().positive().openapi({ example: 3024 }),
+    widthPx: z.number().positive().optional().openapi({ example: 4032 }),
+    heightPx: z.number().positive().optional().openapi({ example: 3024 }),
     authorAttributions: z
       .array(
         z.object({
           displayName: z.string(),
           uri: z.string().optional(),
           photoUri: z.string().optional(),
-        })
+        }).passthrough()
       )
+      .optional()
       .default([]),
     flagContentUri: z.string().optional(),
     googleMapsUri: z.string().optional(),
   })
+  .passthrough()
   .openapi({
     description: 'Photo information',
   });
@@ -158,6 +160,7 @@ export const OpeningHoursSchema = z
     nextOpenTime: z.string().optional(),
     nextCloseTime: z.string().optional(),
   })
+  .passthrough()
   .openapi({
     description: 'Business operating hours',
   });
@@ -180,6 +183,7 @@ export const ReviewSchema = z
     flagContentUri: z.string().optional(),
     googleMapsUri: z.string().optional(),
   })
+  .passthrough()
   .openapi({
     description: 'User review',
   });
@@ -304,6 +308,7 @@ export const PlaceSchema = z
     parkingOptions: ParkingOptionsSchema.optional(),
     accessibilityOptions: AccessibilityOptionsSchema.optional(),
   })
+  .passthrough()
   .openapi({
     title: 'Place',
     description: 'Google Places API place object',

@@ -7,7 +7,7 @@ import type { DealSourceType } from '../services/dealAnalyzer/types';
  * Upsert a website deal data record.
  * Creates if new, updates if already analyzed (keyed by googleRawBusinessId + sourceType).
  */
-export const upsertWebsiteDealData = async (
+export const upsertRawDealAnalysis = async (
   data: {
     googleRawBusinessId: string;
     sourceType: DealSourceType;
@@ -27,7 +27,7 @@ export const upsertWebsiteDealData = async (
     const deals = (data.deals ?? Prisma.JsonNull) as Prisma.InputJsonValue;
     const rawAiResponse = (data.rawAiResponse ?? Prisma.JsonNull) as Prisma.InputJsonValue;
 
-    const result = await prisma.websiteDealData.upsert({
+    const result = await prisma.rawDealAnalysisAustin.upsert({
       where: {
         googleRawBusinessId_sourceType: {
           googleRawBusinessId: data.googleRawBusinessId,
@@ -109,7 +109,7 @@ export const findBusinessesWithoutDealAnalysis = async (
         [urlField]: { not: null },
         scrapeStatus: 'success',
         googleRawBusiness: {
-          dealData: {
+          rawDealAnalysis: {
             none: {
               sourceType,
             },
@@ -131,11 +131,41 @@ export const findBusinessesWithoutDealAnalysis = async (
 };
 
 /**
+ * Find ALL businesses with a URL for the given source type (ignores analysis status).
+ * Used for full re-analysis runs. Upserts in raw_deal_analysis_austin prevent dupes.
+ */
+export const findAllBusinessesWithSocialUrl = async (
+  sourceType: DealSourceType = 'website',
+  limit: number = 5000
+) => {
+  try {
+    const urlField = SOURCE_URL_FIELD[sourceType];
+
+    return await prisma.businessSocialLink.findMany({
+      where: {
+        [urlField]: { not: null },
+        scrapeStatus: 'success',
+      },
+      include: {
+        googleRawBusiness: {
+          select: { id: true, name: true, uri: true },
+        },
+      },
+      take: limit,
+      orderBy: { createdOn: 'desc' },
+    });
+  } catch (error) {
+    logger.error({ error, sourceType }, 'Failed to find businesses with social URL');
+    throw error;
+  }
+};
+
+/**
  * Find deal data for a specific business (all source types).
  */
 export const findDealsByBusinessId = async (googleRawBusinessId: string) => {
   try {
-    return await prisma.websiteDealData.findMany({
+    return await prisma.rawDealAnalysisAustin.findMany({
       where: { googleRawBusinessId },
     });
   } catch (error) {
@@ -149,13 +179,13 @@ export const findDealsByBusinessId = async (googleRawBusinessId: string) => {
  */
 export const getDealAnalysisStats = async () => {
   try {
-    const stats = await prisma.websiteDealData.groupBy({
+    const stats = await prisma.rawDealAnalysisAustin.groupBy({
       by: ['analysisStatus'],
       _count: { _all: true },
     });
 
-    const total = await prisma.websiteDealData.count();
-    const withDeals = await prisma.websiteDealData.count({
+    const total = await prisma.rawDealAnalysisAustin.count();
+    const withDeals = await prisma.rawDealAnalysisAustin.count({
       where: {
         analysisStatus: 'success',
       },

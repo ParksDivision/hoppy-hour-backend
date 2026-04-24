@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   scrapeBusinessSocialLinks,
   scrapePendingBusinesses,
+  scrapeAllBusinesses,
   getBusinessSocialLinks,
   getSocialScrapingStats,
   getSocialQueueStats,
@@ -12,6 +13,7 @@ const router = Router();
 // Scrape triggers
 router.post('/scrape', scrapeBusinessSocialLinks);
 router.post('/scrape/pending', scrapePendingBusinesses);
+router.post('/scrape/all', scrapeAllBusinesses);
 
 // Query endpoints
 router.get('/links/:businessId', getBusinessSocialLinks);

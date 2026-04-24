@@ -52,22 +52,65 @@ export interface TriggerDealAnalysisJobData {
   requestedBy?: string;
 }
 
-/** Instagram Graph API post */
+export interface PublishDealJobData {
+  googleRawBusinessId: string;
+  published: boolean;
+  publishedBy: string;
+}
+
+/** Claude multimodal content block */
+export type ClaudeContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'url'; url: string } };
+
+/** Instagram post (via SociaVault) */
 export interface InstagramPost {
+  id: string;
+  code: string;
   caption: string | null;
   timestamp: string;
-  mediaType: string;
+  takenAt: number;
+  mediaType: number;
   permalink: string;
+  likeCount: number;
+  commentCount: number;
+  imageUrl: string | null;
 }
 
-/** Facebook Graph API page post */
+/** Facebook page post (via SociaVault) */
 export interface FacebookPost {
+  id: string;
   message: string | null;
   createdTime: string;
+  publishTime: number;
+  url: string;
+  reactionCount: number;
+  commentCount: number;
+  imageUrl: string | null;
 }
 
-/** X API v2 tweet */
+/** X/Twitter tweet (via SociaVault) */
 export interface Tweet {
+  id: string;
   text: string;
   createdAt: string;
+  createdAtMs: number;
+  likeCount: number;
+  retweetCount: number;
+  replyCount: number;
+  viewCount: number | null;
+  imageUrl: string | null;
+}
+
+/** Aggregated deals for a business, prioritized across sources */
+export interface AggregatedDeals {
+  businessId: string;
+  primarySource: DealSourceType;
+  deals: ExtractedDeal[];
+  sourceBreakdown: Array<{
+    sourceType: DealSourceType;
+    dealCount: number;
+    analyzedAt: string | null;
+    status: string;
+  }>;
 }

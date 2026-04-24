@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
 import { createRedisConnection } from '../../config/redis';
 import { logger } from '../../utils/logger';
-import type { AnalyzeBusinessJobData } from '../../services/dealAnalyzer/types';
+import type { AnalyzeBusinessJobData, PublishDealJobData } from '../../services/dealAnalyzer/types';
 
 // Create deal analyzer queue
 export const dealAnalyzerQueue = new Queue('deal-analyzer', {
@@ -65,6 +65,29 @@ export const addBulkAnalyzeJobs = async (businesses: AnalyzeBusinessJobData[]) =
     return jobs;
   } catch (error) {
     logger.error({ error, count: businesses.length }, 'Failed to add bulk analyze jobs');
+    throw error;
+  }
+};
+
+/**
+ * Add a publish/unpublish deal job (fires immediately).
+ */
+export const addPublishDealJob = async (data: PublishDealJobData) => {
+  try {
+    const job = await dealAnalyzerQueue.add(
+      data.published ? 'publishDeal' : 'unpublishDeal',
+      data,
+      { priority: 0 }
+    );
+
+    logger.info(
+      { jobId: job.id, businessId: data.googleRawBusinessId, published: data.published },
+      'Added publish deal job to queue'
+    );
+
+    return job;
+  } catch (error) {
+    logger.error({ error, data }, 'Failed to add publish deal job');
     throw error;
   }
 };

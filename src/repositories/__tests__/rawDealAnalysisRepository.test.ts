@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock Prisma
 vi.mock('../../utils/database', () => ({
   default: {
-    websiteDealData: {
+    rawDealAnalysisAustin: {
       upsert: vi.fn(),
       findMany: vi.fn(),
       groupBy: vi.fn(),
@@ -27,20 +27,20 @@ vi.mock('../../utils/logger', () => ({
 
 import prisma from '../../utils/database';
 import {
-  upsertWebsiteDealData,
+  upsertRawDealAnalysis,
   findBusinessesWithoutDealAnalysis,
   findDealsByBusinessId,
   getDealAnalysisStats,
-} from '../websiteDealDataRepository';
+} from '../rawDealAnalysisRepository';
 
-describe('upsertWebsiteDealData', () => {
+describe('upsertRawDealAnalysis', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('calls prisma.upsert with correct create data', async () => {
     const mockResult = { id: 'deal-1', googleRawBusinessId: 'biz-1' };
-    vi.mocked(prisma.websiteDealData.upsert).mockResolvedValue(mockResult as never);
+    vi.mocked(prisma.rawDealAnalysisAustin.upsert).mockResolvedValue(mockResult as never);
 
     const data = {
       googleRawBusinessId: 'biz-1',
@@ -55,11 +55,11 @@ describe('upsertWebsiteDealData', () => {
       analyzedAt: new Date('2026-03-22T00:00:00Z'),
     };
 
-    await upsertWebsiteDealData(data, 'test-user');
+    await upsertRawDealAnalysis(data, 'test-user');
 
-    expect(prisma.websiteDealData.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.rawDealAnalysisAustin.upsert).toHaveBeenCalledTimes(1);
 
-    const call = vi.mocked(prisma.websiteDealData.upsert).mock.calls[0]?.[0];
+    const call = vi.mocked(prisma.rawDealAnalysisAustin.upsert).mock.calls[0]?.[0];
     expect(call).toBeDefined();
     expect(call?.where).toEqual({
       googleRawBusinessId_sourceType: {
@@ -82,7 +82,7 @@ describe('upsertWebsiteDealData', () => {
 
   it('calls prisma.upsert with correct update data (no createdOn/createdBy)', async () => {
     const mockResult = { id: 'deal-1', googleRawBusinessId: 'biz-1' };
-    vi.mocked(prisma.websiteDealData.upsert).mockResolvedValue(mockResult as never);
+    vi.mocked(prisma.rawDealAnalysisAustin.upsert).mockResolvedValue(mockResult as never);
 
     const data = {
       googleRawBusinessId: 'biz-1',
@@ -97,9 +97,9 @@ describe('upsertWebsiteDealData', () => {
       analyzedAt: new Date(),
     };
 
-    await upsertWebsiteDealData(data);
+    await upsertRawDealAnalysis(data);
 
-    const call = vi.mocked(prisma.websiteDealData.upsert).mock.calls[0]?.[0];
+    const call = vi.mocked(prisma.rawDealAnalysisAustin.upsert).mock.calls[0]?.[0];
     expect(call?.update).toBeDefined();
     expect(call?.update).not.toHaveProperty('createdOn');
     expect(call?.update).not.toHaveProperty('createdBy');
@@ -108,7 +108,7 @@ describe('upsertWebsiteDealData', () => {
   });
 
   it('handles null errorMessage from undefined', async () => {
-    vi.mocked(prisma.websiteDealData.upsert).mockResolvedValue({} as never);
+    vi.mocked(prisma.rawDealAnalysisAustin.upsert).mockResolvedValue({} as never);
 
     const data = {
       googleRawBusinessId: 'biz-1',
@@ -123,15 +123,15 @@ describe('upsertWebsiteDealData', () => {
       analyzedAt: new Date(),
     };
 
-    await upsertWebsiteDealData(data);
+    await upsertRawDealAnalysis(data);
 
-    const call = vi.mocked(prisma.websiteDealData.upsert).mock.calls[0]?.[0];
+    const call = vi.mocked(prisma.rawDealAnalysisAustin.upsert).mock.calls[0]?.[0];
     expect(call?.create.errorMessage).toBeNull();
     expect(call?.update.errorMessage).toBeNull();
   });
 
   it('throws on prisma error', async () => {
-    vi.mocked(prisma.websiteDealData.upsert).mockRejectedValue(new Error('DB error'));
+    vi.mocked(prisma.rawDealAnalysisAustin.upsert).mockRejectedValue(new Error('DB error'));
 
     const data = {
       googleRawBusinessId: 'biz-1',
@@ -146,7 +146,7 @@ describe('upsertWebsiteDealData', () => {
       analyzedAt: new Date(),
     };
 
-    await expect(upsertWebsiteDealData(data)).rejects.toThrow('DB error');
+    await expect(upsertRawDealAnalysis(data)).rejects.toThrow('DB error');
   });
 });
 
@@ -242,18 +242,18 @@ describe('findDealsByBusinessId', () => {
 
   it('calls findMany with correct googleRawBusinessId', async () => {
     const mockDeals = [{ id: 'deal-1', googleRawBusinessId: 'biz-1', sourceType: 'website' }];
-    vi.mocked(prisma.websiteDealData.findMany).mockResolvedValue(mockDeals as never);
+    vi.mocked(prisma.rawDealAnalysisAustin.findMany).mockResolvedValue(mockDeals as never);
 
     const result = await findDealsByBusinessId('biz-1');
 
-    expect(prisma.websiteDealData.findMany).toHaveBeenCalledWith({
+    expect(prisma.rawDealAnalysisAustin.findMany).toHaveBeenCalledWith({
       where: { googleRawBusinessId: 'biz-1' },
     });
     expect(result).toEqual(mockDeals);
   });
 
   it('returns empty array when not found', async () => {
-    vi.mocked(prisma.websiteDealData.findMany).mockResolvedValue([]);
+    vi.mocked(prisma.rawDealAnalysisAustin.findMany).mockResolvedValue([]);
 
     const result = await findDealsByBusinessId('nonexistent');
     expect(result).toEqual([]);
@@ -266,12 +266,12 @@ describe('getDealAnalysisStats', () => {
   });
 
   it('returns aggregated stats', async () => {
-    vi.mocked(prisma.websiteDealData.groupBy).mockResolvedValue([
+    vi.mocked(prisma.rawDealAnalysisAustin.groupBy).mockResolvedValue([
       { analysisStatus: 'success', _count: { _all: 30 } },
       { analysisStatus: 'no_deals', _count: { _all: 50 } },
       { analysisStatus: 'failed', _count: { _all: 5 } },
     ] as never);
-    vi.mocked(prisma.websiteDealData.count)
+    vi.mocked(prisma.rawDealAnalysisAustin.count)
       .mockResolvedValueOnce(85) // total
       .mockResolvedValueOnce(30); // withDeals
 

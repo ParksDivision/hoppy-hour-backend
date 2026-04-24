@@ -7,6 +7,7 @@ import {
   searchNearbyPlaces,
   bulkSearchNearbyPlaces,
   searchCityBusinesses,
+  refreshAllBusinessDetails,
   getCollectedBusinesses,
   getCollectedBusinessById,
   searchCollectedBusinessesByName,
@@ -19,6 +20,7 @@ const router = Router();
 router.post('/search', searchNearbyPlaces);
 router.post('/search/bulk', bulkSearchNearbyPlaces);
 router.post('/search/city', searchCityBusinesses);
+router.post('/refresh', refreshAllBusinessDetails);
 
 // Query endpoints
 router.get('/businesses', getCollectedBusinesses);

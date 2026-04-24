@@ -23,6 +23,17 @@ export interface PlaceDetailsJobData {
   requestedBy?: string;
 }
 
+export interface RefreshAllDetailsJobData {
+  requestedBy?: string;
+}
+
+export interface RefreshBusinessDetailsJobData {
+  googleRawBusinessId: string;
+  googlePlaceId: string;
+  businessName: string | null;
+  requestedBy?: string;
+}
+
 // Create Google Places queue
 export const googlePlacesQueue = new Queue('google-places', {
   connection: createRedisConnection(),
@@ -128,6 +139,45 @@ export const addBulkSearchJobs = async (
     return jobs;
   } catch (error) {
     logger.error({ error, count: locations.length }, 'Failed to add bulk search jobs');
+    throw error;
+  }
+};
+
+/**
+ * Add a job to refresh Place Details for a single business and sync its photos.
+ */
+export const addRefreshBusinessDetailsJob = async (data: RefreshBusinessDetailsJobData) => {
+  try {
+    const job = await googlePlacesQueue.add('refreshBusinessDetails', data, {
+      priority: 2,
+    });
+    return job;
+  } catch (error) {
+    logger.error({ error, data }, 'Failed to add refreshBusinessDetails job');
+    throw error;
+  }
+};
+
+/**
+ * Add refresh jobs for all businesses in bulk with staggered delays.
+ */
+export const addBulkRefreshJobs = async (businesses: RefreshBusinessDetailsJobData[]) => {
+  try {
+    const jobs = await googlePlacesQueue.addBulk(
+      businesses.map((biz, index) => ({
+        name: 'refreshBusinessDetails',
+        data: biz,
+        opts: {
+          priority: 2,
+          delay: index * 500, // 500ms stagger — lighter than search
+        },
+      }))
+    );
+
+    logger.info({ count: jobs.length }, 'Added bulk refreshBusinessDetails jobs to queue');
+    return jobs;
+  } catch (error) {
+    logger.error({ error, count: businesses.length }, 'Failed to add bulk refresh jobs');
     throw error;
   }
 };

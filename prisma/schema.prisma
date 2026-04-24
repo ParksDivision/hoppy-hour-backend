@@ -23,9 +23,10 @@ model GoogleRawBusiness {
 
   // Relations with cascade delete
   businessesAustin BusinessAustin[]
-  pendingDeals     PendingDeal[]
   socialLinks      BusinessSocialLink?
-  dealData         WebsiteDealData[]
+  rawDealAnalysis  RawDealAnalysisAustin[]
+  pendingDeals     PendingDealAustin?
+  productionDeals  ProductionDealAustin?
   instagramRawData InstagramRawData?
   facebookRawData  FacebookRawData?
   twitterRawData   TwitterRawData?
@@ -70,7 +71,6 @@ model YelpRawBusiness {
 
   // Relations with cascade delete
   businessesAustin BusinessAustin[]
-  pendingDeals     PendingDeal[]
 
   @@map("yelp_raw_business")
 }
@@ -107,7 +107,11 @@ model BusinessAustin {
   @@map("businesses_austin")
 }
 
-model WebsiteDealData {
+// ─── Deal Pipeline Tables ─────────────────────────────────────────────────────
+
+/// Per-source AI analysis results (one row per business per source type).
+/// Raw Claude output stored here before aggregation.
+model RawDealAnalysisAustin {
   id                  String    @id @default(uuid())
   googleRawBusinessId String    @map("google_raw_business_id")
   sourceType          String    @map("source_type") @db.VarChar(30)
@@ -127,29 +131,51 @@ model WebsiteDealData {
   googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
 
   @@unique([googleRawBusinessId, sourceType])
-  @@map("website_deal_data")
+  @@map("raw_deal_analysis_austin")
 }
 
-model PendingDeal {
-  id             String             @id @default(uuid())
-  googlePlaceId  String?            @map("google_place_id")
-  yelpId         String?            @map("yelp_id")
-  dealType       String?            @map("deal_type") @db.VarChar(30)
-  name           String?            @db.VarChar(75)
-  addressFull    Json?              @map("address_full")
-  primaryPhone   String?            @map("primary_phone") @db.VarChar(30)
-  uri            String?            @db.VarChar(150)
-  createdOn      DateTime?          @map("created_on") @db.Timestamp()
-  createdBy      String?            @map("created_by") @db.VarChar(50)
-  updatedOn      DateTime?          @map("updated_on") @db.Timestamp()
-  updatedBy      String?            @map("updated_by") @db.VarChar(50)
+/// Staging table: one row per business with aggregated, deduplicated deals.
+/// Admin reviews here and sets published = true to push to production.
+model PendingDealAustin {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @unique @map("google_raw_business_id")
+  businessName        String?   @map("business_name") @db.VarChar(255)
+  primarySource       String?   @map("primary_source") @db.VarChar(30)
+  deals               Json?
+  published           Boolean   @default(false)
+  publishedAt         DateTime? @map("published_at") @db.Timestamp()
+  publishedBy         String?   @map("published_by") @db.VarChar(50)
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
 
-  // Relations with cascade delete
-  googleRawBusiness GoogleRawBusiness? @relation(fields: [googlePlaceId], references: [id], onDelete: Cascade)
-  yelpRawBusiness   YelpRawBusiness?   @relation(fields: [yelpId], references: [id], onDelete: Cascade)
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
 
-  @@map("pending_deals")
+  @@index([published])
+  @@map("pending_deals_austin")
 }
+
+/// Production table: one row per business with live deals served to the frontend.
+model ProductionDealAustin {
+  id                  String    @id @default(uuid())
+  googleRawBusinessId String    @unique @map("google_raw_business_id")
+  businessName        String?   @map("business_name") @db.VarChar(255)
+  primarySource       String?   @map("primary_source") @db.VarChar(30)
+  deals               Json?
+  publishedAt         DateTime? @map("published_at") @db.Timestamp()
+  publishedBy         String?   @map("published_by") @db.VarChar(50)
+  createdOn           DateTime? @map("created_on") @db.Timestamp()
+  createdBy           String?   @map("created_by") @db.VarChar(50)
+  updatedOn           DateTime? @map("updated_on") @db.Timestamp()
+  updatedBy           String?   @map("updated_by") @db.VarChar(50)
+
+  googleRawBusiness GoogleRawBusiness @relation(fields: [googleRawBusinessId], references: [id], onDelete: Cascade)
+
+  @@map("production_deals_austin")
+}
+
+// ─── Social Raw Data Tables ───────────────────────────────────────────────────
 
 model InstagramRawData {
   id                  String    @id @default(uuid())

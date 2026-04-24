@@ -8,14 +8,20 @@ import {
   analyzeTwitterForDeals,
 } from '../../services/dealAnalyzer/service';
 import {
-  upsertWebsiteDealData,
+  upsertRawDealAnalysis,
   findBusinessesWithoutDealAnalysis,
-} from '../../repositories/websiteDealDataRepository';
+} from '../../repositories/rawDealAnalysisRepository';
 import { addBulkAnalyzeJobs } from '../jobs/dealAnalyzerJobs';
+import {
+  aggregateAndStagePendingDeals,
+  publishDeal,
+  unpublishDeal,
+} from '../../services/dealPublisher/service';
 import type {
   AnalyzeBusinessJobData,
   DealSourceType,
   TriggerDealAnalysisJobData,
+  PublishDealJobData,
 } from '../../services/dealAnalyzer/types';
 
 type BusinessWithLinks = Awaited<ReturnType<typeof findBusinessesWithoutDealAnalysis>>[number];
@@ -77,7 +83,8 @@ const handleTriggerDealAnalysis = async (job: Job<TriggerDealAnalysisJobData>) =
 };
 
 /**
- * Handle analyzeBusinessDeals: analyze a single business website for deals.
+ * Handle analyzeBusinessDeals: analyze a single business source for deals,
+ * save raw results, then re-aggregate pending deals.
  */
 const handleAnalyzeBusinessDeals = async (job: Job<AnalyzeBusinessJobData>) => {
   const {
@@ -114,10 +121,10 @@ const handleAnalyzeBusinessDeals = async (job: Job<AnalyzeBusinessJobData>) => {
       break;
   }
 
-  await job.updateProgress(70);
+  await job.updateProgress(50);
 
-  // Persist to DB
-  await upsertWebsiteDealData(
+  // Persist raw analysis to DB
+  await upsertRawDealAnalysis(
     {
       googleRawBusinessId,
       sourceType,
@@ -132,6 +139,14 @@ const handleAnalyzeBusinessDeals = async (job: Job<AnalyzeBusinessJobData>) => {
     },
     requestedBy
   );
+
+  await job.updateProgress(60);
+
+  // Re-aggregate and stage pending deals for this business
+  await aggregateAndStagePendingDeals(googleRawBusinessId, requestedBy);
+
+  // Photos are synced in Step 3 (Google Places refresh), NOT here.
+  // This avoids redundant Google API calls during deal analysis.
 
   await job.updateProgress(100);
 
@@ -158,6 +173,32 @@ const handleAnalyzeBusinessDeals = async (job: Job<AnalyzeBusinessJobData>) => {
 };
 
 /**
+ * Handle publishDeal: copy pending deal to production.
+ */
+const handlePublishDeal = async (job: Job<PublishDealJobData>) => {
+  const { googleRawBusinessId, publishedBy } = job.data;
+
+  logger.info({ jobId: job.id, businessId: googleRawBusinessId }, 'Processing publishDeal job');
+
+  await publishDeal(googleRawBusinessId, publishedBy);
+
+  return { success: true, googleRawBusinessId, action: 'published' };
+};
+
+/**
+ * Handle unpublishDeal: remove from production and mark pending as unpublished.
+ */
+const handleUnpublishDeal = async (job: Job<PublishDealJobData>) => {
+  const { googleRawBusinessId, publishedBy } = job.data;
+
+  logger.info({ jobId: job.id, businessId: googleRawBusinessId }, 'Processing unpublishDeal job');
+
+  await unpublishDeal(googleRawBusinessId, publishedBy);
+
+  return { success: true, googleRawBusinessId, action: 'unpublished' };
+};
+
+/**
  * Main worker: routes jobs to handlers based on job name.
  */
 export const dealAnalyzerWorker = new Worker(
@@ -170,6 +211,12 @@ export const dealAnalyzerWorker = new Worker(
 
         case 'analyzeBusinessDeals':
           return await handleAnalyzeBusinessDeals(job as Job<AnalyzeBusinessJobData>);
+
+        case 'publishDeal':
+          return await handlePublishDeal(job as Job<PublishDealJobData>);
+
+        case 'unpublishDeal':
+          return await handleUnpublishDeal(job as Job<PublishDealJobData>);
 
         default:
           throw new Error(`Unknown job type: ${job.name}`);

@@ -28,6 +28,7 @@ export const SOCIAL_PLATFORM_PATTERNS: PlatformPattern[] = [
  * Path segments that indicate a generic platform page, not a business profile.
  */
 export const EXCLUDED_PATHS: string[] = [
+  // Generic platform paths
   'sharer',
   'share',
   'intent',
@@ -50,6 +51,25 @@ export const EXCLUDED_PATHS: string[] = [
   'business',
   'ads',
   'pages',
+  // Facebook-specific garbage
+  'tr',           // tracking pixel
+  'flx',          // internal redirect
+  'security',     // account security
+  'recover',      // account recovery
+  'watch',        // Facebook Watch
+  'marketplace',  // Marketplace
+  'gaming',       // Gaming
+  'groups',       // Groups
+  'events',       // Events
+  'stories',      // Stories
+  'reel',         // Reels
+  'photo',        // Direct photo links
+  'video',        // Direct video links
+  'people',       // People search
+  'pg',           // Old page format
+  'profile.php',  // Profile redirect
+  'r.php',        // Redirect
+  'l.php',        // Link tracking
 ];
 
 /**

@@ -49,6 +49,7 @@ import { userRoutes } from './routes/userRoutes';
 import { googleRoutes } from './routes/googleRoutes';
 import { socialScraperRoutes } from './routes/socialScraperRoutes';
 import { dealAnalyzerRoutes } from './routes/dealAnalyzerRoutes';
+import { frontendRoutes, photoRoutes } from './routes/frontendRoutes';
 // import { businessRoutes } from './routes/businessRoutes';
 
 // Mount routes
@@ -56,7 +57,31 @@ app.use('/api/users', userRoutes);
 app.use('/api/data-collection/google', googleRoutes);
 app.use('/api/data-collection/social', socialScraperRoutes);
 app.use('/api/data-collection/deals', dealAnalyzerRoutes);
+app.use('/api/deals', frontendRoutes);
+app.use('/api/photos', photoRoutes);
 // app.use('/api/businesses', businessRoutes);
+
+// ============================================
+// Bull Board Dashboard
+// ============================================
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
+import { dealAnalyzerQueue, googlePlacesQueue, socialScraperQueue } from './queues';
+
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath('/admin/queues');
+
+createBullBoard({
+  queues: [
+    new BullMQAdapter(dealAnalyzerQueue) as any,
+    new BullMQAdapter(googlePlacesQueue) as any,
+    new BullMQAdapter(socialScraperQueue) as any,
+  ],
+  serverAdapter,
+});
+
+app.use('/admin/queues', serverAdapter.getRouter());
 
 // ============================================
 // OpenAPI/Swagger Documentation
@@ -142,10 +167,22 @@ app.use((error: Error, req: express.Request, res: express.Response) => {
 // ============================================
 const initializeServer = async () => {
   try {
-    // Can add more initialization logic here if needed
     logger.info('Initializing server...');
 
-    // Test database connection if needed
+    // Validate required environment variables
+    const required = ['DATABASE_URL', 'ANTHROPIC_API_KEY', 'GOOGLE_PLACES_API_KEY'];
+    const missing = required.filter((key) => !process.env[key]);
+    if (missing.length > 0) {
+      logger.error({ missing }, 'Missing required environment variables');
+      process.exit(1);
+    }
+
+    const optional = ['SOCIAVAULT_API_KEY', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_R2_ACCESS_KEY_ID'];
+    const missingOptional = optional.filter((key) => !process.env[key]);
+    if (missingOptional.length > 0) {
+      logger.warn({ missing: missingOptional }, 'Optional environment variables not set — some features disabled');
+    }
+
     await prisma.$connect();
     logger.info('Database connected');
 
@@ -183,8 +220,8 @@ const gracefulShutdown = async (signal: string) => {
     // Shutdown queues
     await shutdown();
 
-    // Close database connections if needed
-    // await prisma.$disconnect();
+    // Close database connection
+    await prisma.$disconnect();
 
     logger.info('Graceful shutdown completed');
     process.exit(0);

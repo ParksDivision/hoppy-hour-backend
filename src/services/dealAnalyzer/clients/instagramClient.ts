@@ -1,102 +1,123 @@
-import axios from 'axios';
-import { metaConfig } from '../../../config/meta';
+import { sociavaultGet, getCutoffTimestamp } from '../../sociavault/client';
+import { sociavaultConfig } from '../../../config/sociavault';
 import { extractProfileSlug } from '../../socialScraper/patterns';
 import { logger } from '../../../utils/logger';
+import { likelyContainsDeal, shortDate } from '../contentFilters';
 import type { InstagramPost } from '../types';
 
-const graphApi = axios.create({
-  baseURL: `${metaConfig.graphApiBaseUrl}/${metaConfig.graphApiVersion}`,
-  timeout: metaConfig.timeout,
-});
+/** SociaVault Instagram posts response shape */
+interface SociavaultInstagramResponse {
+  success: boolean;
+  data: {
+    next_max_id: string | null;
+    more_available: boolean;
+    num_results: number;
+    user: { pk: string; username: string; full_name: string };
+    items: Record<
+      string,
+      {
+        pk: string;
+        id: string;
+        code: string;
+        media_type: number;
+        caption: { text: string; created_at_utc: number } | null;
+        like_count: number;
+        comment_count: number;
+        taken_at: number;
+        image_versions2?: { candidates: Array<{ url: string; width: number; height: number }> };
+      }
+    >;
+  };
+  credits_used: number;
+}
 
 /**
  * Extract Instagram username from a profile URL.
- * e.g. "https://www.instagram.com/barname/" → "barname"
  */
 export function extractInstagramUsername(url: string): string | null {
   return extractProfileSlug(url);
 }
 
 /**
- * Fetch recent Instagram posts for a business via the Business Discovery API.
- *
- * Requires:
- * - META_ACCESS_TOKEN: a long-lived Meta User Access Token
- * - INSTAGRAM_BUSINESS_ACCOUNT_ID: your own IG Business Account ID
+ * Fetch recent Instagram posts for a business via SociaVault.
+ * If `since` is provided (from a previous fetch), only returns posts newer than that date.
+ * Otherwise fetches up to 60 days of history.
  */
-export async function fetchInstagramPosts(instagramUrl: string): Promise<InstagramPost[]> {
-  const username = extractInstagramUsername(instagramUrl);
-  if (!username) {
+export async function fetchInstagramPosts(instagramUrl: string, since?: Date | null): Promise<InstagramPost[]> {
+  const handle = extractInstagramUsername(instagramUrl);
+  if (!handle) {
     throw new Error(`Could not extract Instagram username from URL: ${instagramUrl}`);
   }
 
-  if (!metaConfig.accessToken) {
-    throw new Error('META_ACCESS_TOKEN is not configured');
-  }
+  // Use the last fetch time if available, otherwise 60-day window
+  const cutoff = since ? since.getTime() : getCutoffTimestamp();
 
-  if (!metaConfig.instagramBusinessAccountId) {
-    throw new Error('INSTAGRAM_BUSINESS_ACCOUNT_ID is not configured');
-  }
+  logger.debug({ handle, instagramUrl, incremental: !!since }, 'Fetching Instagram posts via SociaVault');
+  const allPosts: InstagramPost[] = [];
+  let cursor: string | undefined;
+  let page = 0;
 
-  logger.debug({ username, instagramUrl }, 'Fetching Instagram posts via Business Discovery');
-
-  const response = await graphApi.get(`/${metaConfig.instagramBusinessAccountId}`, {
-    params: {
-      fields: `business_discovery.fields(username,name,media.limit(${metaConfig.postsPerRequest}){caption,timestamp,media_type,permalink})`,
-      access_token: metaConfig.accessToken,
-    },
-    // The username is passed as part of the fields query via business_discovery
-    // We need to add username filter — the API uses this format:
-    // /{ig-user-id}?fields=business_discovery.fields(...)&access_token=...
-    // with the target username embedded in the endpoint
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  // The Business Discovery API nests the response:
-  // response.data.business_discovery.media.data = [...]
-  const businessDiscovery = response.data?.business_discovery;
-  if (!businessDiscovery) {
-    logger.warn(
-      { username },
-      'No business discovery data returned — account may be private or not a business account'
+  while (page < sociavaultConfig.maxPages) {
+    const response = await sociavaultGet<SociavaultInstagramResponse>(
+      '/instagram/posts',
+      { handle, next_max_id: cursor }
     );
-    return [];
+
+    if (!response.data?.items) {
+      logger.warn({ handle }, 'SociaVault returned no items for Instagram — account may be private or not found');
+      break;
+    }
+    const items = Object.values(response.data.items);
+    if (items.length === 0) break;
+
+    let hitCutoff = false;
+
+    for (const item of items) {
+      const takenAtMs = item.taken_at * 1000;
+
+      if (takenAtMs < cutoff) {
+        hitCutoff = true;
+        break;
+      }
+
+      allPosts.push({
+        id: item.id,
+        code: item.code,
+        caption: item.caption?.text ?? null,
+        timestamp: new Date(takenAtMs).toISOString(),
+        takenAt: item.taken_at,
+        mediaType: item.media_type,
+        permalink: `https://www.instagram.com/p/${item.code}/`,
+        likeCount: item.like_count ?? 0,
+        commentCount: item.comment_count ?? 0,
+        imageUrl: item.image_versions2?.candidates?.[0]?.url ?? null,
+      });
+    }
+
+    if (hitCutoff || !response.data?.more_available || !response.data?.next_max_id) break;
+
+    cursor = response.data.next_max_id;
+    page++;
   }
 
-  const mediaData = businessDiscovery.media?.data ?? [];
-
-  const posts: InstagramPost[] = mediaData.map((post: Record<string, unknown>) => ({
-    caption: (post.caption as string) ?? null,
-    timestamp: post.timestamp as string,
-    mediaType: post.media_type as string,
-    permalink: post.permalink as string,
-  }));
-
-  logger.debug({ username, postCount: posts.length }, 'Fetched Instagram posts');
-  return posts;
+  logger.debug({ handle, postCount: allPosts.length, pages: page + 1 }, 'Fetched Instagram posts');
+  return allPosts;
 }
 
 /**
  * Format Instagram posts into a text string for Claude analysis.
  */
 export function formatInstagramContent(posts: InstagramPost[]): string {
-  const postsWithCaptions = posts.filter((p) => p.caption);
+  const relevant = posts.filter((p) => likelyContainsDeal(p.caption));
 
-  if (postsWithCaptions.length === 0) {
+  if (relevant.length === 0) {
     return '';
   }
 
-  const formatted = postsWithCaptions.map((post, i) => {
-    const date = new Date(post.timestamp).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-    return `--- Post ${i + 1} (${date}) ---\n${post.caption}`;
-  });
+  const formatted = relevant.map((post, i) =>
+    `--- Post ${i + 1} (${shortDate(post.timestamp)}) ---\n${post.caption}`
+  );
 
   return formatted.join('\n\n');
 }
+

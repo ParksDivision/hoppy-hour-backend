@@ -10,6 +10,9 @@ const {
   mockUpsertDealData,
   mockFindWithoutAnalysis,
   mockAddBulkAnalyzeJobs,
+  mockAggregateAndStage,
+  mockPublishDeal,
+  mockUnpublishDeal,
 } = vi.hoisted(() => ({
   workerInstances: [] as Array<{ queueName: string; processor: unknown }>,
   mockAnalyzeWebsite: vi.fn(),
@@ -19,6 +22,9 @@ const {
   mockUpsertDealData: vi.fn(),
   mockFindWithoutAnalysis: vi.fn(),
   mockAddBulkAnalyzeJobs: vi.fn(),
+  mockAggregateAndStage: vi.fn(),
+  mockPublishDeal: vi.fn(),
+  mockUnpublishDeal: vi.fn(),
 }));
 
 // Mock Redis connection
@@ -71,8 +77,8 @@ vi.mock('../../services/dealAnalyzer/service', () => ({
 }));
 
 // Mock the repository
-vi.mock('../../repositories/websiteDealDataRepository', () => ({
-  upsertWebsiteDealData: (...args: unknown[]) => mockUpsertDealData(...args),
+vi.mock('../../repositories/rawDealAnalysisRepository', () => ({
+  upsertRawDealAnalysis: (...args: unknown[]) => mockUpsertDealData(...args),
   findBusinessesWithoutDealAnalysis: (...args: unknown[]) => mockFindWithoutAnalysis(...args),
 }));
 
@@ -93,6 +99,13 @@ vi.mock('../jobs/dealAnalyzerJobs', () => {
     getDealAnalyzerQueueStats: vi.fn(),
   };
 });
+
+// Mock the deal publisher service
+vi.mock('../../services/dealPublisher/service', () => ({
+  aggregateAndStagePendingDeals: (...args: unknown[]) => mockAggregateAndStage(...args),
+  publishDeal: (...args: unknown[]) => mockPublishDeal(...args),
+  unpublishDeal: (...args: unknown[]) => mockUnpublishDeal(...args),
+}));
 
 // Import the worker module to trigger its side effects (Worker instantiation)
 import '../workers/dealAnalyzerWorker';

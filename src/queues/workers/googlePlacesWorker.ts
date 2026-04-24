@@ -18,7 +18,8 @@ import {
   bulkUpsertGoogleRawBusinesses,
   createGoogleRawBusiness,
 } from '../../repositories/googleRawBusinessRepository';
-import type { SearchNearbyJobData, PlaceDetailsJobData } from '../jobs/googlePlacesJobs';
+import { syncBusinessPhotos } from '../../services/photoCache/sync';
+import type { SearchNearbyJobData, PlaceDetailsJobData, RefreshBusinessDetailsJobData } from '../jobs/googlePlacesJobs';
 
 /**
  * Process searchNearby jobs
@@ -183,6 +184,50 @@ const handlePlaceDetails = async (job: Job<PlaceDetailsJobData>) => {
 };
 
 /**
+ * Process refreshBusinessDetails jobs
+ * Fetches fresh Place Details for a single business and syncs photos to R2.
+ */
+const handleRefreshBusinessDetails = async (job: Job<RefreshBusinessDetailsJobData>) => {
+  const { googleRawBusinessId, googlePlaceId, businessName, requestedBy = 'system' } = job.data;
+
+  logger.info({ jobId: job.id, businessName, googlePlaceId }, 'Refreshing business details');
+
+  await job.updateProgress(10);
+
+  // Fetch fresh details from Google (detailed level includes photos, hours, amenities)
+  const place = await getPlaceDetails(googlePlaceId, 'detailed');
+
+  await job.updateProgress(40);
+
+  // Transform and upsert to DB
+  const businessData = transformPlaceToBusinessData(place);
+  await bulkUpsertGoogleRawBusinesses([businessData], requestedBy);
+
+  await job.updateProgress(60);
+
+  // Sync photos to R2 (add new, skip existing, delete removed)
+  const photos = place.photos ?? [];
+  let photoStats = { added: 0, deleted: 0, skipped: 0 };
+  if (photos.length > 0) {
+    try {
+      photoStats = await syncBusinessPhotos(googlePlaceId, photos as Array<{ name: string; widthPx?: number; heightPx?: number }>);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn({ googlePlaceId, error: msg }, 'Photo sync failed, continuing');
+    }
+  }
+
+  await job.updateProgress(100);
+
+  logger.info(
+    { jobId: job.id, businessName, googlePlaceId, photoStats },
+    'Completed business details refresh'
+  );
+
+  return { success: true, businessName, googlePlaceId, photoStats };
+};
+
+/**
  * Main worker processor
  * Routes jobs to appropriate handlers based on job name
  */
@@ -196,6 +241,9 @@ export const googlePlacesWorker = new Worker(
 
         case 'placeDetails':
           return await handlePlaceDetails(job as Job<PlaceDetailsJobData>);
+
+        case 'refreshBusinessDetails':
+          return await handleRefreshBusinessDetails(job as Job<RefreshBusinessDetailsJobData>);
 
         default:
           throw new Error(`Unknown job type: ${job.name}`);

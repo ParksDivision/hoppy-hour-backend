@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { logger } from '../../utils/logger';
 import type { CleanedContent } from './types';
 
-const DEFAULT_MAX_LENGTH = 15000;
+const DEFAULT_MAX_LENGTH = 10000;
 
 const fetchClient = axios.create({
   timeout: 10000,

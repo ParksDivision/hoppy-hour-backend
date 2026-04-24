@@ -86,6 +86,7 @@ vi.mock('../../../repositories/socialRawDataRepository', () => ({
   upsertInstagramRawData: mockUpsertInstagramRawData,
   upsertFacebookRawData: mockUpsertFacebookRawData,
   upsertTwitterRawData: mockUpsertTwitterRawData,
+  getLastFetchedAt: vi.fn(() => Promise.resolve(null)),
 }));
 
 import {
@@ -340,7 +341,7 @@ describe('analyzeInstagramForDeals', () => {
     expect(result.sourceType).toBe('instagram');
     expect(result.status).toBe('success');
     expect(result.deals).toHaveLength(1);
-    expect(mockFetchInstagram).toHaveBeenCalledWith('https://instagram.com/testbar');
+    expect(mockFetchInstagram).toHaveBeenCalledWith('https://instagram.com/testbar', null);
   });
 
   it('returns no_deals when no captions have content', async () => {
@@ -470,7 +471,7 @@ describe('analyzeFacebookForDeals', () => {
 
     expect(result.sourceType).toBe('facebook');
     expect(result.status).toBe('success');
-    expect(mockFetchFacebook).toHaveBeenCalledWith('https://facebook.com/testbar');
+    expect(mockFetchFacebook).toHaveBeenCalledWith('https://facebook.com/testbar', null);
   });
 
   it('returns error on API failure', async () => {
@@ -557,7 +558,7 @@ describe('analyzeTwitterForDeals', () => {
 
     expect(result.sourceType).toBe('twitter');
     expect(result.status).toBe('success');
-    expect(mockFetchTwitter).toHaveBeenCalledWith('https://x.com/testbar');
+    expect(mockFetchTwitter).toHaveBeenCalledWith('https://x.com/testbar', null);
   });
 
   it('returns error on API failure', async () => {

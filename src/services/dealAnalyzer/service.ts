@@ -16,6 +16,7 @@ import {
   upsertInstagramRawData,
   upsertFacebookRawData,
   upsertTwitterRawData,
+  getLastFetchedAt,
 } from '../../repositories/socialRawDataRepository';
 import type { DealAnalysisResult, DealSourceType, ExtractedDeal } from './types';
 
@@ -43,11 +44,13 @@ const DealExtractionResponseSchema = z.object({
   deals: z.array(ExtractedDealSchema),
 });
 
-const MIN_CONTENT_LENGTH = 50;
+const MIN_CONTENT_LENGTH_WEBSITE = 50;
+const MIN_CONTENT_LENGTH_SOCIAL = 15;
 
 /**
- * Shared core: analyze arbitrary text content for deals using Claude API.
- * Used by all platform-specific functions below.
+ * Shared core: analyze text content for deals using Claude API.
+ * Claude only receives text — never external image URLs.
+ * Raw social media data (including images) is stored in DB tables separately.
  */
 export async function analyzeContentForDeals(
   content: string,
@@ -61,8 +64,8 @@ export async function analyzeContentForDeals(
   const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
 
   try {
-    // Check if content is too short to be meaningful
-    if (content.length < MIN_CONTENT_LENGTH) {
+    const minLength = sourceType === 'website' ? MIN_CONTENT_LENGTH_WEBSITE : MIN_CONTENT_LENGTH_SOCIAL;
+    if (content.length < minLength) {
       return {
         sourceUrl,
         sourceType,
@@ -76,17 +79,11 @@ export async function analyzeContentForDeals(
       };
     }
 
-    // Call Claude API
     const response = await anthropicClient.messages.create({
       model,
       max_tokens: anthropicConfig.maxTokens,
       system: DEAL_EXTRACTION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: userPrompt,
-        },
-      ],
+      messages: [{ role: 'user', content: userPrompt }],
     });
 
     // Parse the response
@@ -213,7 +210,11 @@ export async function analyzeInstagramForDeals(
   const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
 
   try {
-    const posts = await fetchInstagramPosts(instagramUrl);
+    // Incremental fetch: only get posts newer than last successful fetch
+    const since = options?.googleRawBusinessId
+      ? await getLastFetchedAt('instagram', options.googleRawBusinessId)
+      : null;
+    const posts = await fetchInstagramPosts(instagramUrl, since);
 
     if (options?.googleRawBusinessId) {
       await upsertInstagramRawData(
@@ -286,7 +287,10 @@ export async function analyzeFacebookForDeals(
   const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
 
   try {
-    const posts = await fetchFacebookPosts(facebookUrl);
+    const since = options?.googleRawBusinessId
+      ? await getLastFetchedAt('facebook', options.googleRawBusinessId)
+      : null;
+    const posts = await fetchFacebookPosts(facebookUrl, since);
 
     if (options?.googleRawBusinessId) {
       await upsertFacebookRawData(
@@ -359,7 +363,10 @@ export async function analyzeTwitterForDeals(
   const promptVersion = options?.promptVersion ?? CURRENT_PROMPT_VERSION;
 
   try {
-    const tweets = await fetchTwitterPosts(twitterUrl);
+    const since = options?.googleRawBusinessId
+      ? await getLastFetchedAt('twitter', options.googleRawBusinessId)
+      : null;
+    const tweets = await fetchTwitterPosts(twitterUrl, since);
 
     if (options?.googleRawBusinessId) {
       await upsertTwitterRawData(

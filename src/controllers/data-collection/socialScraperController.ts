@@ -9,7 +9,7 @@ import {
   findSocialLinksByBusinessId,
   getSocialLinkStats,
 } from '../../repositories/businessSocialLinkRepository';
-import { findGoogleRawBusinessById } from '../../repositories/googleRawBusinessRepository';
+import { findGoogleRawBusinessById, getAllGoogleRawBusinesses } from '../../repositories/googleRawBusinessRepository';
 import { logger } from '../../utils/logger';
 
 /**
@@ -99,6 +99,44 @@ export const scrapePendingBusinesses = async (req: Request, res: Response): Prom
     });
   } catch (error) {
     logger.error({ error }, 'Failed to queue pending social scraping jobs');
+    res.status(500).json({ error: 'Failed to queue social scraping jobs' });
+  }
+};
+
+/**
+ * POST /api/data-collection/social/scrape/all
+ * Re-scrape social links for ALL businesses with a website URL.
+ * Upserts social links — existing links are updated, not duplicated.
+ */
+export const scrapeAllBusinesses = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const businesses = await getAllGoogleRawBusinesses(0, 10000);
+
+    const scrapeJobs = businesses
+      .filter((b) => b.uri)
+      .map((b) => ({
+        googleRawBusinessId: b.id,
+        businessName: b.name,
+        websiteUrl: b.uri!,
+        requestedBy: req.ip ?? 'unknown',
+      }));
+
+    if (scrapeJobs.length === 0) {
+      res.json({ message: 'No businesses with websites to scrape', count: 0 });
+      return;
+    }
+
+    const jobs = await addBulkScrapeJobs(scrapeJobs);
+
+    logger.info({ count: jobs.length, ip: req.ip }, 'Queued social scraping for all businesses');
+
+    res.status(202).json({
+      message: `${jobs.length} social scraping jobs queued`,
+      count: jobs.length,
+      status: 'queued',
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to queue social scraping for all businesses');
     res.status(500).json({ error: 'Failed to queue social scraping jobs' });
   }
 };

@@ -31,3 +31,4 @@ docker-compose.yml
 Dockerfile
 deployment-config/
 *.deploy.*
+.claude/

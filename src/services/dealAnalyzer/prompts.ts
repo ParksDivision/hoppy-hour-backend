@@ -1,27 +1,33 @@
-export const CURRENT_PROMPT_VERSION = 'v1';
+export const CURRENT_PROMPT_VERSION = 'v3';
 
-export const DEAL_EXTRACTION_SYSTEM_PROMPT = `You are a deal extraction specialist for bars, restaurants, and breweries. Your job is to analyze content and identify any happy hour deals, daily specials, limited-time promotions, brunch specials, or late-night specials. The content may come from a website, Instagram posts, Facebook posts, or tweets.
+function todayFormatted(): string {
+  return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
-For each deal you find, extract:
-- dealType: one of "happy_hour", "daily_special", "limited_time", "brunch", or "late_night"
-- title: a short name for the deal (e.g. "Happy Hour", "Taco Tuesday")
-- description: a brief summary of the deal
-- daysOfWeek: array of lowercase day names when this deal is active (e.g. ["monday", "tuesday"]). Use all 7 days if it applies every day.
-- startTime: 24-hour format (e.g. "15:00") or null if not specified
-- endTime: 24-hour format (e.g. "18:00") or null if not specified
-- startDate: ISO date (e.g. "2026-03-01") if the deal has a specific start date, otherwise null
-- endDate: ISO date if the deal expires, otherwise null
-- drinkDeals: array of drink specials with { item, price, description }
-- foodDeals: array of food specials with { item, price, description }
+// ─── Layer 1: Deal Extraction ─────────────────────────────────────────────────
 
-Rules:
-- Only extract deals that include specific pricing, discounts, or special offers
-- Do NOT extract regular menu items or standard pricing
-- If the content has no deals or specials, return an empty array
-- Be thorough — look for deals mentioned anywhere in the text`;
+export const DEAL_EXTRACTION_SYSTEM_PROMPT = `You extract currently active deals from bars/restaurants/breweries. Today is ${todayFormatted()}.
+
+Output schema per deal:
+- dealType: "happy_hour" | "daily_special" | "limited_time" | "brunch" | "late_night"
+- title: short name (e.g. "Happy Hour", "Taco Tuesday")
+- description: brief summary
+- daysOfWeek: lowercase day names array. All 7 if daily.
+- startTime/endTime: "HH:MM" 24hr or null
+- startDate/endDate: ISO date or null
+- drinkDeals: [{ item, price, description }]
+- foodDeals: [{ item, price, description }]
+
+EXTRACT: recurring weekly deals, ongoing promotions, active limited-time offers, brunch/late-night specials.
+
+SKIP: regular menu items, past one-time events (holidays, game days), expired promos, vague mentions without pricing, seasonal specials out of season, one-off social posts older than 3 weeks.
+
+For social media: post dates are shown. Recurring deals from old posts are valid. One-time events from old posts are not. Newer posts override older versions of the same deal.
+
+Return a JSON array. Empty array if no active deals found.`;
 
 export const DEAL_EXTRACTION_USER_PROMPT = (websiteText: string): string =>
-  `Analyze the following website content and extract all happy hour deals, daily specials, and limited-time promotions. Return the results as a JSON array.\n\nWebsite content:\n${websiteText}`;
+  `Extract active deals from this website. Today is ${todayFormatted()}. Return JSON array.\n\n${websiteText}`;
 
 const PLATFORM_LABELS: Record<string, string> = {
   instagram: 'Instagram',
@@ -30,4 +36,21 @@ const PLATFORM_LABELS: Record<string, string> = {
 };
 
 export const SOCIAL_MEDIA_USER_PROMPT = (platform: string, postsText: string): string =>
-  `Analyze the following ${PLATFORM_LABELS[platform] ?? platform} posts from a bar/restaurant and extract all happy hour deals, daily specials, and limited-time promotions. Posts may announce recurring specials, one-time events, or promotional offers. Return the results as a JSON array.\n\n${PLATFORM_LABELS[platform] ?? platform} posts:\n${postsText}`;
+  `Extract active deals from these ${PLATFORM_LABELS[platform] ?? platform} posts. Today is ${todayFormatted()}. Skip expired events. Use most recent version of duplicated deals. Return JSON array.\n\n${postsText}`;
+
+// ─── Layer 2: Deal Comparison & Prioritization ────────────────────────────────
+
+export const DEAL_COMPARISON_SYSTEM_PROMPT = `You merge and deduplicate deals from multiple sources (website, Instagram, Facebook, Twitter) for ONE business. Today is ${todayFormatted()}.
+
+Rules:
+- Same promotion worded differently across sources = duplicate. Keep the most recent version.
+- Recent social posts (< 2 weeks) override website when conflicting (price, hours).
+- Website is the baseline. Social adds to or overrides it.
+- DROP: past events, expired promos, one-off social posts > 3 weeks old, deals without pricing.
+- KEEP: recurring weekly deals even from older posts, ongoing promos.
+- Consolidate overlapping deals into one clean entry.
+
+Output same schema per deal. Return JSON array. Empty array if nothing survives.`;
+
+export const DEAL_COMPARISON_USER_PROMPT = (sourceSections: string): string =>
+  `Merge and deduplicate these deals. Today is ${todayFormatted()}. Remove stale/expired. Return JSON array.\n\n${sourceSections}`;

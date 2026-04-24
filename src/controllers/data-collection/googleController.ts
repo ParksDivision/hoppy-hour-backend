@@ -9,6 +9,7 @@ import { Request, Response } from 'express';
 import {
   addSearchNearbyJob,
   addBulkSearchJobs,
+  addBulkRefreshJobs,
   getQueueStats,
 } from '../../queues/jobs/googlePlacesJobs';
 import { addCitySearchWithSocialScrapingFlow } from '../../queues/jobs/socialScraperJobs';
@@ -329,5 +330,44 @@ export const searchCityBusinesses = async (req: Request, res: Response): Promise
   } catch (error) {
     logger.error({ error }, 'Failed to queue city search');
     res.status(500).json({ error: 'Failed to queue city search' });
+  }
+};
+
+/**
+ * POST /api/data-collection/google/refresh
+ * Refresh Place Details for ALL businesses in the DB.
+ * Fetches fresh data from Google (photos, hours, ratings, etc.) and syncs photos to R2.
+ */
+export const refreshAllBusinessDetails = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const businesses = await getAllGoogleRawBusinesses(0, 10000);
+
+    const refreshJobs = businesses
+      .filter((b) => b.googlePlaceId)
+      .map((b) => ({
+        googleRawBusinessId: b.id,
+        googlePlaceId: b.googlePlaceId!,
+        businessName: b.name,
+        requestedBy: req.ip ?? 'unknown',
+      }));
+
+    if (refreshJobs.length === 0) {
+      res.json({ message: 'No businesses to refresh', count: 0 });
+      return;
+    }
+
+    const jobs = await addBulkRefreshJobs(refreshJobs);
+
+    logger.info({ count: jobs.length, ip: req.ip }, 'Queued business details refresh');
+
+    res.status(202).json({
+      message: `${jobs.length} business refresh jobs queued`,
+      count: jobs.length,
+      status: 'queued',
+      note: 'Each business will get fresh Place Details from Google and photos synced to R2',
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to queue business refresh');
+    res.status(500).json({ error: 'Failed to queue business refresh' });
   }
 };

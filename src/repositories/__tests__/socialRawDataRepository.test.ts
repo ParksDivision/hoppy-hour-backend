@@ -6,12 +6,15 @@ vi.mock('../../utils/database', () => ({
   default: {
     instagramRawData: {
       upsert: vi.fn(),
+      findUnique: vi.fn(() => Promise.resolve(null)),
     },
     facebookRawData: {
       upsert: vi.fn(),
+      findUnique: vi.fn(() => Promise.resolve(null)),
     },
     twitterRawData: {
       upsert: vi.fn(),
+      findUnique: vi.fn(() => Promise.resolve(null)),
     },
   },
 }));
@@ -45,8 +48,8 @@ describe('upsertInstagramRawData', () => {
     vi.mocked(prisma.instagramRawData.upsert).mockResolvedValue(mockResult as never);
 
     const posts = [
-      { caption: 'Happy Hour 3-6pm!', timestamp: '2026-03-20T18:00:00Z', mediaType: 'IMAGE', permalink: 'https://instagram.com/p/abc' },
-      { caption: 'Taco Tuesday!', timestamp: '2026-03-19T12:00:00Z', mediaType: 'IMAGE', permalink: 'https://instagram.com/p/def' },
+      { id: 'post-1', caption: 'Happy Hour 3-6pm!', timestamp: '2026-03-20T18:00:00Z', mediaType: 'IMAGE', permalink: 'https://instagram.com/p/abc' },
+      { id: 'post-2', caption: 'Taco Tuesday!', timestamp: '2026-03-19T12:00:00Z', mediaType: 'IMAGE', permalink: 'https://instagram.com/p/def' },
     ];
 
     await upsertInstagramRawData(
@@ -283,8 +286,8 @@ describe('upsertTwitterRawData', () => {
     vi.mocked(prisma.twitterRawData.upsert).mockResolvedValue({} as never);
 
     const tweets = [
-      { text: 'Happy Hour NOW! $3 wells until 7pm', createdAt: '2026-03-20T22:00:00Z' },
-      { text: 'Taco Tuesday $2 tacos all day!', createdAt: '2026-03-19T17:00:00Z' },
+      { id: 'tweet-1', text: 'Happy Hour NOW! $3 wells until 7pm', createdAt: '2026-03-20T22:00:00Z' },
+      { id: 'tweet-2', text: 'Taco Tuesday $2 tacos all day!', createdAt: '2026-03-19T17:00:00Z' },
     ];
 
     await upsertTwitterRawData(
