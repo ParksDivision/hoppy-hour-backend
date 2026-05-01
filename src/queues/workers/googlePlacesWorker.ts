@@ -17,6 +17,7 @@ import {
 import {
   bulkUpsertGoogleRawBusinesses,
   createGoogleRawBusiness,
+  findGoogleRawBusinessById,
 } from '../../repositories/googleRawBusinessRepository';
 import { syncBusinessPhotos } from '../../services/photoCache/sync';
 import type { SearchNearbyJobData, PlaceDetailsJobData, RefreshBusinessDetailsJobData } from '../jobs/googlePlacesJobs';
@@ -82,7 +83,7 @@ const handleSearchNearby = async (job: Job<SearchNearbyJobData>) => {
     // Update progress based on page count (estimate progress)
     const progress = Math.min(10 + pageCount * 15, 70);
     await job.updateProgress(progress);
-  } while (currentPageToken);
+  } while (currentPageToken && pageCount < 5); // Cap at 5 pages (100 results) per search point to control API costs
 
   logger.info(
     {
@@ -187,14 +188,25 @@ const handlePlaceDetails = async (job: Job<PlaceDetailsJobData>) => {
  * Process refreshBusinessDetails jobs
  * Fetches fresh Place Details for a single business and syncs photos to R2.
  */
+const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
 const handleRefreshBusinessDetails = async (job: Job<RefreshBusinessDetailsJobData>) => {
   const { googleRawBusinessId, googlePlaceId, businessName, requestedBy = 'system' } = job.data;
 
-  logger.info({ jobId: job.id, businessName, googlePlaceId }, 'Refreshing business details');
-
   await job.updateProgress(10);
 
-  // Fetch fresh details from Google (detailed level includes photos, hours, amenities)
+  // Skip if data was refreshed within the last 7 days
+  const existing = await findGoogleRawBusinessById(googleRawBusinessId);
+  const lastUpdated = existing?.updatedOn?.getTime() ?? 0;
+  if (Date.now() - lastUpdated < REFRESH_TTL_MS) {
+    logger.debug({ businessName, googlePlaceId }, 'Skipping refresh — data is fresh (< 7 days)');
+    await job.updateProgress(100);
+    return { success: true, skipped: true, businessName, reason: 'fresh' };
+  }
+
+  logger.info({ jobId: job.id, businessName, googlePlaceId }, 'Refreshing business details');
+
+  // Fetch fresh details from Google
   const place = await getPlaceDetails(googlePlaceId, 'detailed');
 
   await job.updateProgress(40);

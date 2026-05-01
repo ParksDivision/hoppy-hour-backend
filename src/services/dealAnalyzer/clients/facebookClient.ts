@@ -107,13 +107,13 @@ export async function fetchFacebookPosts(facebookUrl: string, since?: Date | nul
  * Format Facebook posts into a text string for Claude analysis.
  */
 export function formatFacebookContent(posts: FacebookPost[]): string {
-  const relevant = posts.filter((p) => likelyContainsDeal(p.message));
+  const withMessages = posts.filter((p) => p.message);
 
-  if (relevant.length === 0) {
+  if (withMessages.length === 0) {
     return '';
   }
 
-  const formatted = relevant.map((post, i) =>
+  const formatted = withMessages.map((post, i) =>
     `--- Post ${i + 1} (${shortDate(post.createdTime)}) ---\n${post.message}`
   );
 

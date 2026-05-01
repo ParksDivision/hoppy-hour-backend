@@ -108,13 +108,13 @@ export async function fetchInstagramPosts(instagramUrl: string, since?: Date | n
  * Format Instagram posts into a text string for Claude analysis.
  */
 export function formatInstagramContent(posts: InstagramPost[]): string {
-  const relevant = posts.filter((p) => likelyContainsDeal(p.caption));
+  const withCaptions = posts.filter((p) => p.caption);
 
-  if (relevant.length === 0) {
+  if (withCaptions.length === 0) {
     return '';
   }
 
-  const formatted = relevant.map((post, i) =>
+  const formatted = withCaptions.map((post, i) =>
     `--- Post ${i + 1} (${shortDate(post.timestamp)}) ---\n${post.caption}`
   );
 

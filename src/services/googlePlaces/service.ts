@@ -32,7 +32,7 @@ export const searchNearbyPlaces = async (
     excludedTypes,
     maxResultCount = googlePlacesConfig.defaults.maxResultCount,
     rankPreference = 'POPULARITY',
-    detailLevel = 'standard',
+    detailLevel = 'basic', // Use basic for search — full details fetched in refresh step
   } = options;
 
   const requestBody: NearbySearchRequest = {

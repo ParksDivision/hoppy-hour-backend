@@ -186,13 +186,11 @@ export async function fetchTwitterPosts(twitterUrl: string, since?: Date | null)
  * Format tweets into a text string for Claude analysis.
  */
 export function formatTwitterContent(tweets: Tweet[]): string {
-  const relevant = tweets.filter((t) => likelyContainsDeal(t.text));
-
-  if (relevant.length === 0) {
+  if (tweets.length === 0) {
     return '';
   }
 
-  const formatted = relevant.map((tweet, i) =>
+  const formatted = tweets.map((tweet, i) =>
     `--- Tweet ${i + 1} (${shortDate(tweet.createdAt)}) ---\n${tweet.text}`
   );
 

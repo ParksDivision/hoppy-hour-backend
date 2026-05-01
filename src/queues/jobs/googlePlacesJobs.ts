@@ -38,7 +38,7 @@ export interface RefreshBusinessDetailsJobData {
 export const googlePlacesQueue = new Queue('google-places', {
   connection: createRedisConnection(),
   defaultJobOptions: {
-    attempts: 3, // Retry failed jobs up to 3 times
+    attempts: 1, // No retries — each retry is a paid Google API call
     backoff: {
       type: 'exponential',
       delay: 2000, // Start with 2 second delay, doubles each retry
